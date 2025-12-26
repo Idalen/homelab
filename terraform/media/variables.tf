@@ -1,3 +1,4 @@
+
 variable "pm_api_url" {
   type        = string
   description = "Proxmox API URL"
@@ -42,3 +43,7 @@ variable "vm_gateway" {
   description = "VM default gateway"
 }
 
+variable "vmid" {
+  type        = string
+  description = "VM ID"
+}

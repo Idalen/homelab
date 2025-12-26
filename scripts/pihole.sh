@@ -9,4 +9,4 @@ sudo systemctl disable systemd-resolved
 
 echo "Deploying Pi-hole..."
 cd "$HOME"
-sudo docker compose -f "$HOME/docker-compose.yaml" up -d pihole
+sudo docker compose -f "$HOME/nameserver-compose.yaml" up -d
