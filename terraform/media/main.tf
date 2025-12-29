@@ -15,6 +15,14 @@ provider "proxmox" {
   pm_tls_insecure = var.pm_tls_insecure
 }
 
+module "cloud_config" {
+  source = "../modules/cloud_config"
+
+  proxmox_host = var.proxmox_host
+  ssh_user     = var.proxmox_ssh_user
+  vm_name      = "media"
+}
+
 module "media_vm" {
   source = "../modules/proxmox_vm"
 
@@ -26,9 +34,10 @@ module "media_vm" {
   vm_gateway = var.vm_gateway
   ciuser     = var.vm_ssh_user
   sshkeys    = var.vm_ssh_keys
+  cicustom   = "vendor=local:snippets/${basename(module.cloud_config.snippet_path)}"
 
-  memory    = 4096
-  balloon   = 3072
+  memory    = 2048
+  balloon   = 1024
   cores     = 2
   sockets   = 1
   disk_size = "30G"
