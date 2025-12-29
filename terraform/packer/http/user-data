@@ -1,0 +1,39 @@
+
+#cloud-config
+autoinstall:
+  version: 1
+  locale: en_US
+  keyboard:
+    layout: de
+
+  ssh:
+    install-server: true
+    allow-pw: true
+    disable_root: true
+    ssh_quiet_keygen: true
+    allow_public_ssh_keys: true
+
+  packages:
+    - qemu-guest-agent
+    - sudo
+
+  storage:
+    layout:
+      name: direct
+    swap:
+      size: 0
+
+  user-data:
+    package_upgrade: false
+    users:
+      - name: damv
+        groups: [adm, sudo]
+        lock-passwd: false
+        sudo: ALL=(ALL) NOPASSWD:ALL
+        shell: /bin/bash
+        # passwd: your-password
+        # or
+        ssh_authorized_keys:
+          - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDRCtlpRPSssk0BM3qcs9Nr3Kp8sVeuqz8tC1SUSzHRDQj33fmqZpaypqY9egyYt5lwC2ab05GsU34heMrILTOweYQ3UhGiV7/WTNbbssJRuo1Cp1spjmO95iodTA99LOzYHpR3IOnIWdhGS93tv3dE3ORzAni1E1qMUVkpB2nyZPZXXjJnXBiXVwaGFU4fkaBCcPSmSC3+fDUhPpFaqluGF7let4P0BIloyySwEtUx8AoHSH3Mu1AsBV+2rgWmDEbi6/hramICDWYJdCrEnQ3rlCFiHBiWoHSLSNy4eeq7WmBFwXVfYBe4l7GWKSsqfdfg8xxUC9PP+TVAgJsN3ZKBVGM0j5buwp/nf2hXIMypNAJ/8u3A5166sj4Oci1Bjn0+TjbHIRIQ17jtzLJE7JEhyGTBsDr8LHRFYLXkHn0UIX3rLShhmLK2xvdDbJPTE3qsAOBrM2RT1srDkB6+LCU5TPyWKT9XUw5ECCn0O8XRkfRwPfwFJadMJlSPs60Di1sK8i1Su0mx+fiMbb0ECYHMeL5nwLisrI2MrrMJAl4rSr6jHNEeFqqplwj3F8e3BDbjtHet0+ZgUWFAj+1K64wUGa3ifnt5qAIVq/jUGtFkuzvIOZKYDGz7WyP0ZWkeaSLqJYGnTzYRDUY6xb6F9rQd4PLyoRDjOth797Oi84b/LQ== idalenm@proton.me
+
+ 

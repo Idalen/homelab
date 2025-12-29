@@ -1,13 +1,4 @@
 
-terraform {
-  required_providers {
-    proxmox = {
-      source  = "Telmate/proxmox"
-      version = "3.0.2-rc04"
-    }
-  }
-}
-
 resource "proxmox_vm_qemu" "vm" {
   name        = var.name
   description = var.description
@@ -16,23 +7,26 @@ resource "proxmox_vm_qemu" "vm" {
 
   agent            = var.agent
   clone            = var.clone_template
-  scsihw           = "virtio-scsi-single"
-  boot             = "order=scsi0"
   vm_state         = var.vm_state
   automatic_reboot = var.automatic_reboot
 
-  os_type   = "cloud_init"
+  scsihw  = "virtio-scsi-pci"
+  boot    = "order=virtio0"
+  os_type = "cloud_init"
+
   ipconfig0 = "ip=${var.vm_ip},gw=${var.vm_gateway}"
   ciuser    = var.ciuser
   sshkeys   = var.sshkeys
   ciupgrade = var.ciupgrade
   cicustom  = var.cicustom
 
-  memory = var.memory
+  memory  = var.memory
+  balloon = var.balloon
 
   cpu {
     cores   = var.cores
     sockets = var.sockets
+    type    = "kvm64"
   }
 
   network {
@@ -45,15 +39,22 @@ resource "proxmox_vm_qemu" "vm" {
     id = 0
   }
 
+  usb {
+    id        = 0
+    device_id = var.usb_device
+    usb3      = true
+  }
+
   disks {
-    scsi {
-      scsi0 {
+    virtio {
+      virtio0 {
         disk {
           storage = var.storage
           size    = var.disk_size
         }
       }
     }
+
     ide {
       ide1 {
         cloudinit {

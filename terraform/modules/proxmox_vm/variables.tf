@@ -23,13 +23,19 @@ variable "target_node" {
 variable "clone_template" {
   type        = string
   description = "Template to clone"
-  default     = "debian12-cloudinit"
+  default     = "packer-ubuntu2404"
 }
 
 variable "memory" {
   type        = number
   description = "Memory in MB"
   default     = 1024
+}
+
+variable "balloon" {
+  type        = number
+  description = "Balloon memory in MB"
+  default     = 0
 }
 
 variable "cores" {
@@ -92,7 +98,7 @@ variable "ciupgrade" {
 variable "cicustom" {
   type        = string
   description = "Cloud-init custom snippet"
-  default     = "vendor=local:snippets/qemu-guest-agent.yml"
+  default     = "vendor=local:snippets/cloud-config.yaml"
 }
 
 variable "agent" {
@@ -111,4 +117,10 @@ variable "automatic_reboot" {
   type        = bool
   description = "Automatically reboot on config change"
   default     = true
+}
+
+variable "usb_device" {
+  type        = string
+  description = "USB device ID"
+  default     = null
 }

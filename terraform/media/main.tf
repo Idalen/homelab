@@ -9,10 +9,10 @@ terraform {
 }
 
 provider "proxmox" {
-  pm_api_url           = var.pm_api_url
-  pm_api_token_id      = var.pm_api_token_id
-  pm_api_token_secret  = var.pm_api_token_secret
-  pm_tls_insecure      = var.pm_tls_insecure
+  pm_api_url      = var.pm_api_url
+  pm_user         = var.pm_user
+  pm_password     = var.pm_password
+  pm_tls_insecure = var.pm_tls_insecure
 }
 
 module "media_vm" {
@@ -27,21 +27,24 @@ module "media_vm" {
   ciuser     = var.vm_ssh_user
   sshkeys    = var.vm_ssh_keys
 
-  memory    = 2048
+  memory    = 4096
+  balloon   = 3072
   cores     = 2
   sockets   = 1
-  disk_size = "20G"
+  disk_size = "30G"
+
+  usb_device = "0bc2:2322"
 }
 
 resource "null_resource" "configure_media" {
   depends_on = [module.media_vm]
 
   connection {
-    type    = "ssh"
-    host    = split("/", var.vm_ip)[0]
-    user    = var.vm_ssh_user
-    agent   = true
-    timeout = "2m"
+    type        = "ssh"
+    host        = split("/", var.vm_ip)[0]
+    user        = var.vm_ssh_user
+    private_key = file("~/.ssh/id_rsa")
+    timeout     = "2m"
   }
 
   provisioner "file" {

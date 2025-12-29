@@ -1,5 +1,4 @@
 
-
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -10,25 +9,24 @@ fi
 
 echo "Installing prerequisites..."
 sudo apt-get update -y
-sudo apt-get install -y ca-certificates curl
+sudo apt-get install -y ca-certificates curl gnupg
 
-echo "Setting up Docker APT repository..."
+echo "Setting up Docker APT repository (Ubuntu)..."
 sudo install -m 0755 -d /etc/apt/keyrings
 
-if [ ! -f /etc/apt/keyrings/docker.asc ]; then
-  curl -fsSL https://download.docker.com/linux/debian/gpg \
-    | sudo tee /etc/apt/keyrings/docker.asc >/dev/null
-  sudo chmod a+r /etc/apt/keyrings/docker.asc
+# Add Docker’s official GPG key (keyring format)
+if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  sudo chmod a+r /etc/apt/keyrings/docker.gpg
 fi
 
-if [ ! -f /etc/apt/sources.list.d/docker.sources ]; then
-  sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/debian
-Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
-Components: stable
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
+# Add the repository
+if [ ! -f /etc/apt/sources.list.d/docker.list ]; then
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+    | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
 fi
 
 echo "Updating apt with Docker repo..."
