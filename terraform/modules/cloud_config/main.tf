@@ -1,18 +1,6 @@
-variable "proxmox_host" {
-  type        = string
-  description = "Proxmox host to connect to over SSH."
-  default     = "192.168.0.100"
-}
-
-variable "ssh_user" {
-  type        = string
-  description = "SSH user for the Proxmox host."
-  default     = "root"
-}
-
 locals {
-  cloud_config_src = "${path.root}/../../cloud-config/cloud-config.yaml"
-  cloud_config_dst = "/var/lib/vz/snippets/cloud-config.yaml"
+  cloud_config_src = var.cloud_config_src != "" ? var.cloud_config_src : "../${var.vm_name}/cloud-config.yaml"
+  cloud_config_dst = var.cloud_config_dst != "" ? var.cloud_config_dst : "/var/lib/vz/snippets/${var.vm_name}-cloud-config.yaml"
 }
 
 resource "null_resource" "cloud_config_snippet" {
@@ -43,7 +31,4 @@ resource "null_resource" "cloud_config_snippet" {
       "chmod 0644 ${local.cloud_config_dst}"
     ]
   }
-}
-output "snippet_path" {
-  value = "/var/lib/vz/snippets/cloud-config.yaml"
 }

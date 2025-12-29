@@ -11,7 +11,6 @@ packages:
   - bash
   - usbutils
 
-
 runcmd:
   - systemctl enable --now qemu-guest-agent
   - systemctl enable --now docker

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+set -x
+
 bash bootstrap.sh
 
 echo "Mounting USB external disk..."

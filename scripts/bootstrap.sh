@@ -2,6 +2,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+set -x
+
 echo "Waiting for cloud-init to finish (if present)..."
 if command -v cloud-init >/dev/null 2>&1; then
   cloud-init status --wait || true

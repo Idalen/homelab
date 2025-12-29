@@ -39,10 +39,13 @@ resource "proxmox_vm_qemu" "vm" {
     id = 0
   }
 
-  usb {
-    id        = 0
-    device_id = var.usb_device
-    usb3      = true
+  dynamic "usb" {
+    for_each = var.usb_device != null ? [var.usb_device] : []
+    content {
+      id        = 0
+      device_id = usb.value
+      usb3      = true
+    }
   }
 
   disks {
