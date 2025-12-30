@@ -22,6 +22,18 @@ variable "pm_tls_insecure" {
   default     = true
 }
 
+variable "proxmox_host" {
+  type        = string
+  description = "Proxmox host to connect to over SSH."
+  default     = "192.168.0.100"
+}
+
+variable "proxmox_ssh_user" {
+  type        = string
+  description = "SSH user for the Proxmox host."
+  default     = "root"
+}
+
 variable "vm_ssh_user" {
   type        = string
   description = "Cloud-init SSH user"

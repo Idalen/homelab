@@ -15,6 +15,14 @@ provider "proxmox" {
   pm_tls_insecure     = var.pm_tls_insecure
 }
 
+module "cloud_config" {
+  source = "../modules/cloud_config"
+
+  proxmox_host = var.proxmox_host
+  ssh_user     = var.proxmox_ssh_user
+  vm_name      = "nameserver"
+}
+
 module "nameserver_vm" {
   source = "../modules/proxmox_vm"
 
@@ -26,6 +34,7 @@ module "nameserver_vm" {
   vm_gateway = var.vm_gateway
   ciuser     = var.vm_ssh_user
   sshkeys    = var.vm_ssh_keys
+  cicustom   = "vendor=local:snippets/${basename(module.cloud_config.snippet_path)}"
 
   memory    = 1024
   cores     = 2
@@ -33,15 +42,15 @@ module "nameserver_vm" {
   disk_size = "10G"
 }
 
-resource "null_resource" "configure" {
+resource "null_resource" "configure_nameserver" {
   depends_on = [module.nameserver_vm]
 
   connection {
-    type    = "ssh"
-    host    = split("/", var.vm_ip)[0]
-    user    = var.vm_ssh_user
-    agent   = true
-    timeout = "2m"
+    type        = "ssh"
+    host        = split("/", var.vm_ip)[0]
+    user        = var.vm_ssh_user
+    private_key = file("~/.ssh/id_rsa")
+    timeout     = "2m"
   }
 
   provisioner "file" {

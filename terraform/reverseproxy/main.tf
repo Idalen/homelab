@@ -51,7 +51,7 @@ resource "null_resource" "verify_reverseproxy" {
     type    = "ssh"
     host    = split("/", var.vm_ip)[0]
     user    = var.vm_ssh_user
-    agent   = true
+    private_key = file("~/.ssh/id_rsa")
     timeout = "5m"
   }
 

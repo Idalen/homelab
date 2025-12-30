@@ -9,7 +9,6 @@ packages:
   - ca-certificates
   - curl
   - bash
-  - usbutils
 
 runcmd:
   - systemctl enable --now qemu-guest-agent
