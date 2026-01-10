@@ -38,7 +38,7 @@ module "media_vm" {
 
   memory    = 2048
   balloon   = 1024
-  cores     = 2
+  cores     = 3
   sockets   = 1
   disk_size = "30G"
 

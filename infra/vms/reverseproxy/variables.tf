@@ -4,13 +4,12 @@ variable "pm_api_url" {
   description = "Proxmox API URL"
 }
 
-variable "pm_api_token_id" {
+variable "pm_user" {
   type        = string
   description = "Proxmox API token ID"
-  sensitive   = true
 }
 
-variable "pm_api_token_secret" {
+variable "pm_password" {
   type        = string
   description = "Proxmox API token secret"
   sensitive   = true
@@ -58,4 +57,10 @@ variable "vm_gateway" {
 variable "vmid" {
   type        = string
   description = "VM ID"
+}
+
+variable "enable_post_boot_verify" {
+  type        = bool
+  description = "Run post-boot verification commands over SSH."
+  default     = false
 }

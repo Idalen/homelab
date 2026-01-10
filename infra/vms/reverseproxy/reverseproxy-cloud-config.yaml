@@ -2,6 +2,7 @@
 package_update: true
 packages:
   - nginx
+  - qemu-guest-agent
 
 write_files:
   - path: /etc/nginx/sites-available/qbittorrent.home
@@ -40,6 +41,7 @@ write_files:
       }
 
 runcmd:
+  - [bash, -lc, "systemctl enable --now qemu-guest-agent"]
   - [bash, -lc, "ln -sfn /etc/nginx/sites-available/qbittorrent.home /etc/nginx/sites-enabled/qbittorrent.home"]
   - [bash, -lc, "ln -sfn /etc/nginx/sites-available/jellyfin.home /etc/nginx/sites-enabled/jellyfin.home"]
   - [bash, -lc, "rm -f /etc/nginx/sites-enabled/default"]

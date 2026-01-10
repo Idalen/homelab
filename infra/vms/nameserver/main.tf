@@ -16,18 +16,18 @@ provider "proxmox" {
 }
 
 module "cloud_config" {
-  source = "../modules/cloud_config"
+  source = "../../modules/cloud_config"
 
   proxmox_host = var.proxmox_host
   ssh_user     = var.proxmox_ssh_user
-  vm_name      = "media"
+  vm_name      = "nameserver"
 }
 
-module "media_vm" {
-  source = "../modules/proxmox_vm"
+module "nameserver_vm" {
+  source = "../../modules/proxmox_vm"
 
-  name        = "media"
-  description = "Runs qBittorrent and Jellyfin"
+  name        = "nameserver"
+  description = "Runs pi-hole"
   vmid        = var.vmid
 
   vm_ip      = var.vm_ip
@@ -36,17 +36,15 @@ module "media_vm" {
   sshkeys    = var.vm_ssh_keys
   cicustom   = "vendor=local:snippets/${basename(module.cloud_config.snippet_path)}"
 
-  memory    = 2048
-  balloon   = 1024
+  balloon = 512
+  memory    = 1024
   cores     = 2
   sockets   = 1
-  disk_size = "30G"
-
-  usb_device = "0bc2:2322"
+  disk_size = "20G"
 }
 
-resource "null_resource" "configure_media" {
-  depends_on = [module.media_vm]
+resource "null_resource" "configure_nameserver" {
+  depends_on = [module.nameserver_vm]
 
   connection {
     type        = "ssh"
@@ -57,25 +55,25 @@ resource "null_resource" "configure_media" {
   }
 
   provisioner "file" {
-    source      = "../../scripts/bootstrap.sh"
+    source      = "../../../scripts/bootstrap.sh"
     destination = "/home/${var.vm_ssh_user}/bootstrap.sh"
   }
 
   provisioner "file" {
-    source      = "../../scripts/media.sh"
-    destination = "/home/${var.vm_ssh_user}/media.sh"
+    source      = "../../../scripts/pihole.sh"
+    destination = "/home/${var.vm_ssh_user}/pihole.sh"
   }
 
   provisioner "file" {
-    source      = "../../docker/media-compose.yaml"
-    destination = "/home/${var.vm_ssh_user}/media-compose.yaml"
+    source      = "../../../docker/nameserver-compose.yaml"
+    destination = "/home/${var.vm_ssh_user}/nameserver-compose.yaml"
   }
 
   provisioner "remote-exec" {
     inline = [
       "chmod +x /home/${var.vm_ssh_user}/bootstrap.sh",
-      "chmod +x /home/${var.vm_ssh_user}/media.sh",
-      "bash /home/${var.vm_ssh_user}/media.sh",
+      "chmod +x /home/${var.vm_ssh_user}/pihole.sh",
+      "bash /home/${var.vm_ssh_user}/pihole.sh",
     ]
   }
 }

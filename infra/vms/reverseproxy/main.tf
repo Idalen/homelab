@@ -9,22 +9,22 @@ terraform {
 
 provider "proxmox" {
   pm_api_url      = var.pm_api_url
-  pm_api_token_id         = var.pm_api_token_id
-  pm_api_token_secret     = var.pm_api_token_secret
+  pm_user         = var.pm_user
+  pm_password     = var.pm_password
   pm_tls_insecure = var.pm_tls_insecure
 }
 
 module "cloud_config" {
-  source = "../modules/cloud_config"
+  source = "../../modules/cloud_config"
 
   proxmox_host     = var.proxmox_host
   ssh_user         = var.proxmox_ssh_user
   vm_name          = "reverseproxy"
-  cloud_config_src = "../reverseproxy/reverseproxy-cloud-config.yaml"
+  cloud_config_src = "reverseproxy-cloud-config.yaml"
 }
 
 module "reverseproxy_vm" {
-  source = "../modules/proxmox_vm"
+  source = "../../modules/proxmox_vm"
   depends_on = [module.cloud_config]
 
   name        = "reverseproxy"
@@ -40,7 +40,7 @@ module "reverseproxy_vm" {
   memory    = 1024
   cores     = 1
   sockets   = 1
-  disk_size = "8G"
+  disk_size = "20G"
 }
 
 resource "null_resource" "verify_reverseproxy" {
@@ -77,17 +77,17 @@ resource "null_resource" "verify_reverseproxy" {
 #   }
 #
 #   provisioner "file" {
-#     source      = "../../scripts/bootstrap.sh"
+#     source      = "../../../scripts/bootstrap.sh"
 #     destination = "/home/${var.vm_ssh_user}/bootstrap.sh"
 #   }
 #
 #   provisioner "file" {
-#     source      = "../../scripts/media.sh"
+#     source      = "../../../scripts/media.sh"
 #     destination = "/home/${var.vm_ssh_user}/media.sh"
 #   }
 #
 #   provisioner "file" {
-#     source      = "../../docker/media-compose.yaml"
+#     source      = "../../../docker/media-compose.yaml"
 #     destination = "/home/${var.vm_ssh_user}/media-compose.yaml"
 #   }
 #
