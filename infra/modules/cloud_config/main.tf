@@ -1,5 +1,5 @@
 locals {
-  cloud_config_src = var.cloud_config_src != "" ? var.cloud_config_src : "../../vms/${var.vm_name}/cloud-config.yaml"
+  cloud_config_src = var.cloud_config_src != "" ? var.cloud_config_src : "../../services/${var.vm_name}/cloud-config.yaml"
   cloud_config_dst = var.cloud_config_dst != "" ? var.cloud_config_dst : "/var/lib/vz/snippets/${var.vm_name}-cloud-config.yaml"
 }
 
