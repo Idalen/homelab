@@ -15,65 +15,50 @@ provider "proxmox" {
   pm_tls_insecure = var.pm_tls_insecure
 }
 
-module "cloud_config" {
-  source = "../../modules/cloud_config"
+module "nameserver_lxc" {
+  source = "../../modules/proxmox_lxc"
 
-  proxmox_host = var.proxmox_host
-  ssh_user     = var.proxmox_ssh_user
-  vm_name      = "nameserver"
-}
-
-module "nameserver_vm" {
-  source = "../../modules/proxmox_vm"
-
-  name        = "nameserver"
-  description = "Runs pi-hole"
-  vmid        = var.vmid
-
-  vm_ip      = var.vm_ip
-  vm_gateway = var.vm_gateway
-  ciuser     = var.vm_ssh_user
-  sshkeys    = var.vm_ssh_keys
-  cicustom   = "vendor=local:snippets/${basename(module.cloud_config.snippet_path)}"
-
-  balloon = 512
-  memory    = 1024
-  cores     = 2
-  sockets   = 1
-  disk_size = "20G"
+  hostname        = "nameserver"
+  vmid            = var.vmid
+  target_node     = var.target_node
+  ostemplate      = var.ostemplate
+  bridge          = var.bridge
+  ip_address      = var.lxc_ip
+  gateway         = var.lxc_gateway
+  storage         = var.storage
+  disk_size       = "20G"
+  memory          = 1024
+  ssh_public_keys = var.lxc_ssh_keys
 }
 
 resource "null_resource" "configure_nameserver" {
-  depends_on = [module.nameserver_vm]
+  depends_on = [module.nameserver_lxc]
 
   connection {
-    type        = "ssh"
-    host        = split("/", var.vm_ip)[0]
-    user        = var.vm_ssh_user
-    private_key = file("~/.ssh/id_rsa")
-    timeout     = "2m"
+    type    = "ssh"
+    host    = var.proxmox_host
+    user    = var.proxmox_ssh_user
+    agent   = true
+    timeout = "2m"
   }
 
   provisioner "file" {
-    source      = "../../../scripts/bootstrap.sh"
-    destination = "/home/${var.vm_ssh_user}/bootstrap.sh"
-  }
-
-  provisioner "file" {
-    source      = "../../../scripts/pihole.sh"
-    destination = "/home/${var.vm_ssh_user}/pihole.sh"
-  }
-
-  provisioner "file" {
-    source      = "../../../docker/nameserver-compose.yaml"
-    destination = "/home/${var.vm_ssh_user}/nameserver-compose.yaml"
+    source      = "${path.module}/bootstrap.sh"
+    destination = "/tmp/nameserver-bootstrap.sh"
   }
 
   provisioner "remote-exec" {
-    inline = [
-      "chmod +x /home/${var.vm_ssh_user}/bootstrap.sh",
-      "chmod +x /home/${var.vm_ssh_user}/pihole.sh",
-      "bash /home/${var.vm_ssh_user}/pihole.sh",
+    inline = [<<-EOT
+set -e
+
+VMID=${var.vmid} \
+LXC_SSH_USER=${var.lxc_ssh_user} \
+LXC_IP=${var.lxc_ip} \
+PIHOLE_DNS_1=${var.pihole_dns_1} \
+PIHOLE_DNS_2=${var.pihole_dns_2} \
+PIHOLE_WEBPASSWORD=${var.pihole_webpassword} \
+bash /tmp/nameserver-bootstrap.sh
+EOT
     ]
   }
 }

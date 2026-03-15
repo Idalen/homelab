@@ -14,88 +14,85 @@ provider "proxmox" {
   pm_tls_insecure = var.pm_tls_insecure
 }
 
-module "cloud_config" {
-  source = "../../modules/cloud_config"
-
-  proxmox_host     = var.proxmox_host
-  ssh_user         = var.proxmox_ssh_user
-  vm_name          = "reverseproxy"
-  cloud_config_src = "reverseproxy-cloud-config.yaml"
+locals {
+  nginx_config_files = sort(fileset("${path.module}/nginx", "*"))
 }
 
-module "reverseproxy_vm" {
-  source = "../../modules/proxmox_vm"
-  depends_on = [module.cloud_config]
+module "reverseproxy_lxc" {
+  source = "../../modules/proxmox_lxc"
 
-  name        = "reverseproxy"
-  description = "Basically NGINX doing its magic"
-  vmid        = var.vmid
-
-  vm_ip      = var.vm_ip
-  vm_gateway = var.vm_gateway
-  ciuser     = var.vm_ssh_user
-  sshkeys    = var.vm_ssh_keys
-  cicustom   = "vendor=local:snippets/${basename(module.cloud_config.snippet_path)}"
-
-  memory    = 1024
-  cores     = 1
-  sockets   = 1
-  disk_size = "20G"
+  hostname        = "reverseproxy"
+  vmid            = var.vmid
+  target_node     = var.target_node
+  ostemplate      = var.ostemplate
+  bridge          = var.bridge
+  ip_address      = var.lxc_ip
+  gateway         = var.lxc_gateway
+  storage         = var.storage
+  disk_size       = "20G"
+  memory          = 1024
+  ssh_public_keys = var.lxc_ssh_keys
 }
 
-resource "null_resource" "verify_reverseproxy" {
-  count      = var.enable_post_boot_verify ? 1 : 0
-  depends_on = [module.reverseproxy_vm]
+resource "null_resource" "configure_reverseproxy" {
+  depends_on = [module.reverseproxy_lxc]
+
+  triggers = {
+    bootstrap_hash = filesha256("${path.module}/bootstrap.sh")
+    nginx_dir_hash = sha256(jsonencode({
+      for config in local.nginx_config_files :
+      config => filesha256("${path.module}/nginx/${config}")
+    }))
+  }
 
   connection {
-    type    = "ssh"
-    host    = split("/", var.vm_ip)[0]
-    user    = var.vm_ssh_user
+    type        = "ssh"
+    host        = split("/", var.lxc_ip)[0]
+    user        = "root"
     private_key = file("~/.ssh/id_rsa")
-    timeout = "5m"
+    timeout     = "2m"
+  }
+  provisioner "file" {
+    source      = "${path.module}/bootstrap.sh"
+    destination = "/tmp/reverseproxy-bootstrap.sh"
+  }
+
+  provisioner "file" {
+    source      = "${path.module}/nginx"
+    destination = "/tmp"
   }
 
   provisioner "remote-exec" {
-    inline = [
-      "cloud-init status --wait || true",
-      "systemctl is-active nginx",
-      "nginx -t",
-      "curl -I http://localhost",
+    inline = [<<-EOT
+set -e
+
+LXC_SSH_USER=${var.lxc_ssh_user} \
+NGINX_CONFIG_DIR=/tmp/nginx \
+bash /tmp/reverseproxy-bootstrap.sh
+EOT
     ]
   }
 }
 
-# resource "null_resource" "configure_media" {
-#   depends_on = [module.media_vm]
-#
-#   connection {
-#     type        = "ssh"
-#     host        = split("/", var.vm_ip)[0]
-#     user        = var.vm_ssh_user
-#     private_key = file("~/.ssh/id_rsa")
-#     timeout     = "2m"
-#   }
-#
-#   provisioner "file" {
-#     source      = "../../../scripts/bootstrap.sh"
-#     destination = "/home/${var.vm_ssh_user}/bootstrap.sh"
-#   }
-#
-#   provisioner "file" {
-#     source      = "../../../scripts/media.sh"
-#     destination = "/home/${var.vm_ssh_user}/media.sh"
-#   }
-#
-#   provisioner "file" {
-#     source      = "../../../docker/media-compose.yaml"
-#     destination = "/home/${var.vm_ssh_user}/media-compose.yaml"
-#   }
-#
-#   provisioner "remote-exec" {
-#     inline = [
-#       "chmod +x /home/${var.vm_ssh_user}/bootstrap.sh",
-#       "chmod +x /home/${var.vm_ssh_user}/media.sh",
-#       "bash /home/${var.vm_ssh_user}/media.sh",
-#     ]
-#   }
-# }
+resource "null_resource" "verify_reverseproxy" {
+  count      = var.enable_post_boot_verify ? 1 : 0
+  depends_on = [null_resource.configure_reverseproxy]
+
+  connection {
+    type        = "ssh"
+    host        = split("/", var.lxc_ip)[0]
+    user        = "root"
+    private_key = file("~/.ssh/id_rsa")
+    timeout     = "5m"
+  }
+
+  provisioner "remote-exec" {
+    inline = [<<-EOT
+set -e
+systemctl is-active nginx
+nginx -t
+curl -I http://localhost
+EOT
+    ]
+  }
+}

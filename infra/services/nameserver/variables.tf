@@ -33,28 +33,70 @@ variable "proxmox_ssh_user" {
   default     = "root"
 }
 
-variable "vm_ssh_user" {
+variable "vmid" {
   type        = string
-  description = "Cloud-init SSH user"
+  description = "Container ID"
 }
 
-variable "vm_ssh_keys" {
+variable "target_node" {
   type        = string
-  description = "SSH public keys for cloud-init"
+  description = "Proxmox target node"
+  default     = "pve"
+}
+
+variable "ostemplate" {
+  type        = string
+  description = "Container OS template"
+  default     = "local:vztmpl/ubuntu-20.04-standard_20.04-1_amd64.tar.gz"
+}
+
+variable "bridge" {
+  type        = string
+  description = "Network bridge"
+  default     = "vmbr0"
+}
+
+variable "storage" {
+  type        = string
+  description = "Root filesystem storage backend"
+  default     = "local-lvm"
+}
+
+variable "lxc_ip" {
+  type        = string
+  description = "Container IP address in CIDR format (use dhcp for DHCP)"
+}
+
+variable "lxc_gateway" {
+  type        = string
+  description = "Container default gateway"
+}
+
+variable "lxc_ssh_keys" {
+  type        = string
+  description = "SSH public keys to authorize for the container"
   sensitive   = true
 }
 
-variable "vm_ip" {
+variable "lxc_ssh_user" {
   type        = string
-  description = "VM IP address"
+  description = "SSH user to create inside the container"
 }
 
-variable "vm_gateway" {
+variable "pihole_dns_1" {
   type        = string
-  description = "VM default gateway"
+  description = "Primary upstream DNS server for Pi-hole"
+  default     = "1.1.1.1"
 }
 
-variable "vmid" {
+variable "pihole_dns_2" {
   type        = string
-  description = "VM ID"
+  description = "Secondary upstream DNS server for Pi-hole"
+  default     = "8.8.8.8"
+}
+
+variable "pihole_webpassword" {
+  type        = string
+  description = "Pi-hole web UI password (empty string to auto-generate)"
+  default     = ""
 }

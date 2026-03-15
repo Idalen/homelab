@@ -72,12 +72,21 @@ variable "lxc_gateway" {
 variable "lxc_ssh_keys" {
   type        = string
   description = "SSH public keys for container access"
-  sensitive   = true
 }
 
 variable "lxc_ssh_user" {
   type        = string
   description = "SSH user to create in the container"
+}
+
+variable "telegram_bot_token" {
+  type        = string
+  description = "Telegram bot token"
+}
+
+variable "go_version" {
+  type        = string
+  description = "Go version to install in the container"
 }
 
 variable "vmid" {
