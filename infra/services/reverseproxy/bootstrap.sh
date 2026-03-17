@@ -21,8 +21,17 @@ retry "install -d -m 700 /home/${LXC_SSH_USER}/.ssh"
 retry "if [ -f /root/.ssh/authorized_keys ]; then cp /root/.ssh/authorized_keys /home/${LXC_SSH_USER}/.ssh/authorized_keys; fi"
 retry "chmod 600 /home/${LXC_SSH_USER}/.ssh/authorized_keys"
 retry "chown -R ${LXC_SSH_USER}:${LXC_SSH_USER} /home/${LXC_SSH_USER}/.ssh"
-retry "apt-get update && apt-get install -y nginx ca-certificates curl"
+retry "apt-get update && apt-get install -y nginx ca-certificates curl openssl"
 retry "install -d -m 755 /etc/nginx/sites-available /etc/nginx/sites-enabled"
+retry "install -d -m 755 /etc/nginx/certs"
+
+if [ ! -f /etc/nginx/certs/home.key ] || [ ! -f /etc/nginx/certs/home.crt ]; then
+  retry "openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
+    -keyout /etc/nginx/certs/home.key \
+    -out /etc/nginx/certs/home.crt \
+    -subj '/CN=*.home' \
+    -addext 'subjectAltName=DNS:*.home,DNS:home,DNS:localhost'"
+fi
 
 for config in "${NGINX_CONFIG_DIR}"/*; do
   [ -f "${config}" ] || continue
