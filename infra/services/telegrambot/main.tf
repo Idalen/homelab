@@ -25,7 +25,7 @@ module "telegrambot_lxc" {
   ip_address      = var.lxc_ip
   gateway         = var.lxc_gateway
   storage         = var.storage
-  disk_size       = "10G"
+  disk_size       = "8G"
   memory          = 512
   ssh_public_keys = var.lxc_ssh_keys
 }
@@ -34,10 +34,10 @@ resource "null_resource" "configure_telegrambot_user" {
   depends_on = [module.telegrambot_lxc]
 
   connection {
-    type  = "ssh"
-    host  = var.proxmox_host
-    user  = var.proxmox_ssh_user
-    agent = true
+    type    = "ssh"
+    host    = var.proxmox_host
+    user    = var.proxmox_ssh_user
+    agent   = true
     timeout = "2m"
   }
 
@@ -63,7 +63,7 @@ else
 fi
 exec /usr/local/bin/go run main.go
 SCRIPT
-))}
+      ))}
 
 SERVICE_B64=${jsonencode(base64encode(<<-UNIT
 [Unit]
@@ -93,6 +93,6 @@ START_B64=$START_B64 \
 SERVICE_B64=$SERVICE_B64 \
 bash /tmp/telegrambot-bootstrap.sh
 EOT
-    ]
-  }
+]
+}
 }

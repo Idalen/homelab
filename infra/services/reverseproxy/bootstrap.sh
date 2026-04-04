@@ -25,12 +25,12 @@ retry "apt-get update && apt-get install -y nginx ca-certificates curl openssl"
 retry "install -d -m 755 /etc/nginx/sites-available /etc/nginx/sites-enabled"
 retry "install -d -m 755 /etc/nginx/certs"
 
-if [ ! -f /etc/nginx/certs/home.key ] || [ ! -f /etc/nginx/certs/home.crt ]; then
+if [ ! -f /etc/nginx/certs/home-arpa.key ] || [ ! -f /etc/nginx/certs/home-arpa.crt ]; then
   retry "openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
-    -keyout /etc/nginx/certs/home.key \
-    -out /etc/nginx/certs/home.crt \
-    -subj '/CN=*.home' \
-    -addext 'subjectAltName=DNS:*.home,DNS:home,DNS:localhost'"
+    -keyout /etc/nginx/certs/home-arpa.key \
+    -out /etc/nginx/certs/home-arpa.crt \
+    -subj '/CN=*.home.arpa' \
+    -addext 'subjectAltName=DNS:*.home.arpa,DNS:home.arpa,DNS:localhost'"
 fi
 
 for config in "${NGINX_CONFIG_DIR}"/*; do

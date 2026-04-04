@@ -36,8 +36,7 @@ module "media_vm" {
   sshkeys    = var.vm_ssh_keys
   cicustom   = "vendor=local:snippets/${basename(module.cloud_config.snippet_path)}"
 
-  memory    = 2048
-  balloon   = 1024
+  memory    = 6144
   cores     = 3
   sockets   = 1
   disk_size = "30G"

@@ -29,8 +29,8 @@ module "reverseproxy_lxc" {
   ip_address      = var.lxc_ip
   gateway         = var.lxc_gateway
   storage         = var.storage
-  disk_size       = "20G"
-  memory          = 1024
+  disk_size       = "8G"
+  memory          = 512
   ssh_public_keys = var.lxc_ssh_keys
 }
 

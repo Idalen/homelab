@@ -1,6 +1,6 @@
 server {
   listen 80;
-  server_name pihole.home;
+  server_name pihole.home.arpa;
 
   location = / {
     return 302 /admin/;

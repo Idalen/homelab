@@ -86,3 +86,14 @@ variable "gateway" {
   description = "Default gateway (leave empty for none)"
   default     = ""
 }
+
+variable "mountpoint" {
+  type = object({
+    slot    = string
+    storage = string
+    mp      = string
+    size    = string
+  })
+  description = "Optional additional LXC mountpoint configuration."
+  default     = null
+}

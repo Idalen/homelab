@@ -1,0 +1,123 @@
+- name: Install Pi-hole
+  hosts: all
+  become: yes
+  collections:
+    - community.general
+
+  vars:
+    pihole_interface: eth0
+    pihole_dns_1: 1.1.1.1
+    pihole_dns_2: 1.0.0.1
+    pihole_adlists:
+      - url: https://big.oisd.nl
+        comment: oisd
+      - url: https://media.githubusercontent.com/media/zachlagden/Pi-hole-Optimized-Blocklists/main/lists/nsfw.txt
+        comment: nsfw
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install dependencies
+      apt:
+        name:
+          - curl
+          - sudo
+          - sqlite3
+        state: present
+
+    - name: Download Pi-hole installer
+      get_url:
+        url: https://install.pi-hole.net
+        dest: /tmp/pihole-install.sh
+        mode: '0755'
+
+    - name: Disable systemd-resolved if enabled
+      shell: systemctl disable --now systemd-resolved
+      register: resolved_disable
+      failed_when: false
+      changed_when: resolved_disable.rc == 0
+
+    - name: Set resolv.conf for installer
+      copy:
+        dest: /etc/resolv.conf
+        content: |
+          nameserver {{ pihole_dns_1 }}
+          nameserver {{ pihole_dns_2 }}
+        mode: '0644'
+
+    - name: Ensure Pi-hole config directory exists
+      file:
+        path: /etc/pihole
+        state: directory
+        mode: '0755'
+
+    - name: Write Pi-hole setupVars.conf
+      copy:
+        dest: /etc/pihole/setupVars.conf
+        content: |
+          PIHOLE_INTERFACE={{ pihole_interface }}
+          IPV4_ADDRESS=192.168.0.2/24
+          IPV6_ADDRESS=
+          PIHOLE_DNS_1={{ pihole_dns_1 }}
+          PIHOLE_DNS_2={{ pihole_dns_2 }}
+          QUERY_LOGGING=true
+          INSTALL_WEB_SERVER=true
+          INSTALL_WEB_INTERFACE=true
+          LIGHTTPD_ENABLED=true
+          CACHE_SIZE=10000
+          DNS_FQDN_REQUIRED=true
+          DNS_BOGUS_PRIV=true
+          DNSMASQ_LISTENING=local
+        mode: '0644'
+
+    - name: Run Pi-hole installer (non-interactive)
+      environment:
+        PIHOLE_SKIP_OS_CHECK: "true"
+        PIHOLE_SKIP_STATIC_IP_CHECK: "true"
+        DEBIAN_FRONTEND: "noninteractive"
+      shell: curl -sSL https://install.pi-hole.net | bash /dev/stdin --unattended
+      args:
+        creates: /etc/pihole/install.log
+
+
+    - name: Set Pi-hole custom DNS hosts
+      replace:
+        path: /etc/pihole/pihole.toml
+        regexp: '(?s)^  hosts = \[.*?\]\n'
+        replace: |
+          hosts = [
+            "192.168.0.103 jellyfin.home.arpa",
+            "192.168.0.103 torrent.home.arpa",
+            "192.168.0.103 pve.home.arpa",
+            "192.168.0.103 pihole.home.arpa"
+          ]
+
+    - name: Restart Pi-hole FTL
+      systemd:
+        name: pihole-FTL
+        state: restarted
+
+    - name: Set Pi-hole upstream DNS
+      shell: /usr/local/bin/pihole -a setdns {{ pihole_dns_1 }} {{ pihole_dns_2 }}
+
+    - name: Add Pi-hole blocklists
+      shell: >
+        sqlite3 /etc/pihole/gravity.db
+        "INSERT OR IGNORE INTO adlist (address, enabled, comment)
+         VALUES ('{{ item.url }}', 1, '{{ item.comment }}');"
+      loop: "{{ pihole_adlists }}"
+
+    - name: Regenerate Pi-hole gravity
+      shell: /usr/local/bin/pihole -g
+
+    - name: Restart Pi-hole DNS
+      shell: /usr/local/bin/pihole reloaddns
+
+    - name: Ensure Pi-hole service is running
+      systemd:
+        name: pihole-FTL
+        state: started
+        enabled: yes
+
