@@ -1,0 +1,16 @@
+[Unit]
+Description=Crawler Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ lxc_ssh_user }}
+WorkingDirectory={{ crawler_dir }}
+EnvironmentFile=/etc/crawler.env
+ExecStart=/usr/local/bin/go run main.go
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

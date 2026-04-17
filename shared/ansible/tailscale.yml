@@ -1,0 +1,72 @@
+- name: Install and configure Tailscale VPN
+  hosts: all
+  become: yes
+  collections:
+    - community.general
+
+  vars:
+    tailscale_auth_key: "{{ lookup('env', 'TAILSCALE_AUTH_KEY', default='') }}"
+    tailscale_args: "--accept-routes --accept-dns"
+    dns_server_1: "192.168.0.2"
+    dns_server_2: "1.1.1.1"
+
+  tasks:
+    - name: Disable systemd-resolved if enabled
+      shell: systemctl disable --now systemd-resolved
+      register: resolved_disable
+      failed_when: false
+      changed_when: resolved_disable.rc == 0
+
+    - name: Set resolv.conf for installer
+      copy:
+        dest: /etc/resolv.conf
+        content: |
+          nameserver {{ dns_server_1 }}
+          nameserver {{ dns_server_2 }}
+        mode: '0644'
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install dependencies
+      apt:
+        name:
+          - curl
+          - sudo
+          - ca-certificates
+          - gnupg
+        state: present
+    - name: Add Tailscale GPG key
+      apt_key:
+        url: https://pkgs.tailscale.com/stable/debian/bookworm.gpg
+        state: present
+
+    - name: Add Tailscale repo
+      apt_repository:
+        repo: "deb https://pkgs.tailscale.com/stable/debian bookworm main"
+        state: present
+
+    - name: Install Tailscale
+      apt:
+        name: tailscale
+        state: present
+        update_cache: yes
+
+    - name: Ensure Tailscale service is started and enabled
+      systemd:
+        name: tailscaled
+        state: started
+        enabled: yes
+
+    - name: Check if Tailscale is already authenticated
+      command: tailscale status
+      register: tailscale_status
+      changed_when: false
+      failed_when: false
+
+    - name: Bring Tailscale up and authenticate
+      command: "tailscale up --authkey={{ tailscale_auth_key }} {{ tailscale_args }}"
+      when: "'Logged out' in tailscale_status.stdout or tailscale_status.rc != 0"
+      register: tailscale_up
+      changed_when: "'Success' in tailscale_up.stdout or tailscale_up.rc == 0"

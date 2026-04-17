@@ -1,0 +1,96 @@
+- name: Install and configure Crawler Telegram Bot
+  hosts: all
+  become: yes
+  collections:
+    - community.general
+
+  vars:
+    lxc_ssh_user: "{{ lxc_ssh_user | default('root') }}"
+    telegram_bot_token: "{{ telegram_bot_token | default('') }}"
+    go_version: "{{ go_version | default('1.22.0') }}"
+    crawler_repo: "{{ crawler_repo | default('https://github.com/Idalen/telegrambot.git') }}"
+    home_dir: "{{ '/root' if lxc_ssh_user == 'root' else '/home/' + lxc_ssh_user }}"
+    crawler_dir: "{{ home_dir }}/crawler"
+
+  tasks:
+    - name: Validate required variables
+      ansible.builtin.fail:
+        msg: "telegram_bot_token must be set"
+      when: telegram_bot_token | length == 0
+
+    - name: Disable systemd-resolved if enabled
+      shell: systemctl disable --now systemd-resolved
+      register: resolved_disable
+      failed_when: false
+      changed_when: resolved_disable.rc == 0
+
+    - name: Set resolv.conf for installer
+      copy:
+        dest: /etc/resolv.conf
+        content: |
+          nameserver 1.1.1.1
+          nameserver 1.0.0.1
+        mode: '0644'
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install dependencies
+      apt:
+        name:
+          - git
+          - ca-certificates
+          - curl
+          - tar
+        state: present
+
+    - name: Install Go
+      ansible.builtin.shell: |
+        rm -rf /usr/local/go
+        curl -fsSL https://go.dev/dl/go{{ go_version }}.linux-amd64.tar.gz -o /tmp/go.tgz
+        tar -C /usr/local -xzf /tmp/go.tgz
+        ln -sf /usr/local/go/bin/go /usr/local/bin/go
+      args:
+        creates: /usr/local/bin/go
+
+    - name: Ensure crawler directory exists
+      ansible.builtin.file:
+        path: "{{ crawler_dir }}"
+        state: directory
+        owner: "{{ lxc_ssh_user }}"
+        group: "{{ lxc_ssh_user }}"
+        mode: '0755'
+
+    - name: Clone or update crawler repository
+      ansible.builtin.git:
+        repo: "{{ crawler_repo }}"
+        dest: "{{ crawler_dir }}"
+        update: yes
+        force: yes
+        clone: yes
+        owner: "{{ lxc_ssh_user }}"
+        group: "{{ lxc_ssh_user }}"
+
+    - name: Create crawler environment file
+      ansible.builtin.copy:
+        dest: /etc/crawler.env
+        content: |
+          TELEGRAM_BOT_TOKEN={{ telegram_bot_token }}
+        mode: '0600'
+
+    - name: Deploy crawler systemd service
+      ansible.builtin.template:
+        src: templates/crawler.service.j2
+        dest: /etc/systemd/system/crawler.service
+        mode: '0644'
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Enable and start crawler service
+      ansible.builtin.systemd:
+        name: crawler
+        state: started
+        enabled: yes

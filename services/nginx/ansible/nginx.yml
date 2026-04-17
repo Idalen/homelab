@@ -1,0 +1,100 @@
+- name: Install and configure NGINX reverse proxy
+  hosts: all
+  become: yes
+  collections:
+    - community.general
+
+  vars:
+    nginx_config_src: "{{ playbook_dir }}/../config"
+    ssl_cert_path: /etc/nginx/certs/home-arpa.crt
+    ssl_key_path: /etc/nginx/certs/home-arpa.key
+    ssl_subject: "/CN=*.home.arpa"
+    ssl_san: "DNS:*.home.arpa,DNS:home.arpa,DNS:localhost"
+    ssl_days: 3650
+    dns_server_1: "192.168.0.2"
+    dns_server_2: "1.1.1.1"
+
+  tasks:
+    - name: Disable systemd-resolved if enabled
+      shell: systemctl disable --now systemd-resolved
+      register: resolved_disable
+      failed_when: false
+      changed_when: resolved_disable.rc == 0
+
+    - name: Set resolv.conf for installer
+      copy:
+        dest: /etc/resolv.conf
+        content: |
+          nameserver {{ dns_server_1 }}
+          nameserver {{ dns_server_2 }}
+        mode: '0644'
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install dependencies
+      apt:
+        name:
+          - curl
+          - sudo
+          - ca-certificates
+          - openssl
+          - nginx
+        state: present
+
+    - name: Create NGINX directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /etc/nginx/sites-available
+        - /etc/nginx/sites-enabled
+        - /etc/nginx/certs
+
+    - name: Generate self-signed SSL certificate if not present
+      shell: |
+        openssl req -x509 -nodes -newkey rsa:2048 \
+          -days {{ ssl_days }} \
+          -keyout {{ ssl_key_path }} \
+          -out {{ ssl_cert_path }} \
+          -subj '{{ ssl_subject }}' \
+          -addext 'subjectAltName={{ ssl_san }}'
+      args:
+        creates: "{{ ssl_cert_path }}"
+
+    - name: Copy NGINX site configurations
+      ansible.builtin.copy:
+        src: "{{ nginx_config_src }}/{{ item }}"
+        dest: "/etc/nginx/sites-available/{{ item }}"
+        mode: '0644'
+      loop: "{{ lookup('fileglob', nginx_config_src + '/*', wantlist=true) | map('basename') }}"
+
+    - name: Enable NGINX sites
+      ansible.builtin.file:
+        src: "/etc/nginx/sites-available/{{ item }}"
+        dest: "/etc/nginx/sites-enabled/{{ item }}"
+        state: link
+      loop: "{{ lookup('fileglob', nginx_config_src + '/*', wantlist=true) | map('basename') }}"
+
+    - name: Remove default NGINX site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Test NGINX configuration
+      ansible.builtin.shell: nginx -t
+      changed_when: false
+
+    - name: Ensure NGINX service is enabled and started
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Reload NGINX
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded

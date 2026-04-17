@@ -1,0 +1,34 @@
+# Shared network configuration for homelab services
+# This file provides centralized network settings to avoid hardcoding across services
+
+# Network subnet
+subnet: "192.168.0.0/24"
+gateway: "192.168.0.1"
+
+# External DNS servers (used when pihole is unavailable)
+external_dns:
+  - "1.1.1.1"
+  - "1.0.0.1"
+
+# Service IP assignments
+service_ips:
+  pihole: "192.168.0.2"
+  nginx: "192.168.0.3"
+  crawler: "192.168.0.21"
+  # immich: variable (defined per deployment)
+  # media: variable (defined per deployment)
+
+# DHCP range (used by pihole)
+dhcp_start: "192.168.0.50"
+dhcp_end: "192.168.0.250"
+
+# Domain
+domain: "home.arpa"
+
+# Nginx configuration
+nginx:
+  ssl_cert_path: "/etc/nginx/certs/home-arpa.crt"
+  ssl_key_path: "/etc/nginx/certs/home-arpa.key"
+  ssl_subject: "/CN=*.home.arpa"
+  ssl_san: "DNS:*.home.arpa,DNS:home.arpa,DNS:localhost"
+  ssl_days: 3650

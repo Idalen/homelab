@@ -6,8 +6,8 @@ homeassistant/*
 pihole/*
 jellyfin/*
 
-# ------- Terraform -------- #
-# Terraform working directory
+# ------- OpenTofu/Terraform -------- #
+# OpenTofu/Terraform working directory
 .terraform/
 **/.terraform/*
 
@@ -21,7 +21,7 @@ jellyfin/*
 crash.log
 crash.*.log
 
-# Terraform CLI config (credentials, tokens)
+# OpenTofu/Terraform CLI config (credentials, tokens)
 .terraformrc
 terraform.rc
 

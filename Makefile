@@ -1,0 +1,111 @@
+DEBUG ?= 0
+ANSIBLE_VERBOSE = $(if $(filter 1,$(DEBUG)),-vvv,)
+
+.PHONY: all run debug help pihole nginx crawler immich
+
+all: pihole
+
+help:
+	@printf "Targets:\n"
+	@printf "  make run <service>    - deploy service\n"
+	@printf "  make debug <service>  - deploy service with verbose outputs\n" 
+	@printf "  make help             - show this help\n"
+	@printf "Existing services:\n"
+	@printf "  pihole\n"
+	@printf "  nginx\n"
+	@printf "  crawler\n"
+	@printf "  immich\n"
+
+run: $(word 2,$(MAKECMDGOALS))
+
+debug: DEBUG=1
+debug: $(word 2,$(MAKECMDGOALS))
+
+pihole:
+	tofu -chdir=./services/pihole/terraform init -upgrade
+	tofu -chdir=./services/pihole/terraform destroy -auto-approve
+	tofu -chdir=./services/pihole/terraform apply -auto-approve
+	LXC_IP=$$(tofu -chdir=./services/pihole/terraform output -raw lxc_ip); \
+	echo "LXC IP: $$LXC_IP"; \
+	ssh-keygen -R "$$LXC_IP"; \
+	ansible localhost $(ANSIBLE_VERBOSE) -m wait_for -a "host=$$LXC_IP port=22 delay=2 timeout=300"; \
+	set -a; \
+	. ./.env; \
+	set +a; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$LXC_IP," \
+		-u root \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		./services/pihole/ansible/pihole.yml; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$LXC_IP," \
+		-u root \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		-e "tailscale_args=--accept-routes --accept-dns=false" \
+		./shared/ansible/tailscale.yml
+
+
+nginx:
+	tofu -chdir=./services/nginx/terraform init -upgrade
+	tofu -chdir=./services/nginx/terraform destroy -auto-approve
+	tofu -chdir=./services/nginx/terraform apply -auto-approve
+	LXC_IP=$$(tofu -chdir=./services/nginx/terraform output -raw lxc_ip); \
+	echo "LXC IP: $$LXC_IP"; \
+	ssh-keygen -R "$$LXC_IP"; \
+	ansible localhost $(ANSIBLE_VERBOSE) -m wait_for -a "host=$$LXC_IP port=22 delay=2 timeout=300"; \
+	set -a; \
+	. ./.env; \
+	set +a; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$LXC_IP," \
+		-u root \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		./services/nginx/ansible/nginx.yml; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$LXC_IP," \
+		-u root \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		./shared/ansible/tailscale.yml
+
+crawler:
+	@if [ ! -f .env ]; then \
+		echo "Error: .env file not found. Create it from .env.example"; \
+		exit 1; \
+	fi
+	tofu -chdir=./services/crawler/terraform init -upgrade
+	tofu -chdir=./services/crawler/terraform destroy -auto-approve
+	tofu -chdir=./services/crawler/terraform apply -auto-approve
+	LXC_IP=$$(tofu -chdir=./services/crawler/terraform output -raw lxc_ip); \
+	echo "LXC IP: $$LXC_IP"; \
+	ssh-keygen -R "$$LXC_IP"; \
+	ansible localhost $(ANSIBLE_VERBOSE) -m wait_for -a "host=$$LXC_IP port=22 delay=2 timeout=300"; \
+	set -a; \
+	. ./.env; \
+	set +a; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$LXC_IP," \
+		-u root \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		-e "telegram_bot_token=$$TELEGRAM_BOT_TOKEN" \
+		-e "lxc_ssh_user=$$LXC_SSH_USER" \
+		-e "go_version=$$GO_VERSION" \
+		./services/crawler/ansible/crawler.yml	
+
+immich:
+	tofu -chdir=./services/immich/terraform init -upgrade
+	tofu -chdir=./services/immich/terraform destroy -auto-approve
+	tofu -chdir=./services/immich/terraform apply -auto-approve
+	LXC_IP=$$(tofu -chdir=./services/immich/terraform output -raw lxc_ip); \
+	echo "LXC IP: $$LXC_IP"; \
+	ssh-keygen -R "$$LXC_IP"; \
+	ansible localhost $(ANSIBLE_VERBOSE) -m wait_for -a "host=$$LXC_IP port=22 delay=2 timeout=300"; \
+	set -a; \
+	. ./.env; \
+	set +a; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$LXC_IP," \
+		-u root \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		./services/immich/ansible/immich.yml; \
+%:
+	@:

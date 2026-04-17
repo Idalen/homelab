@@ -1,0 +1,226 @@
+- name: Install and configure Immich photo backup server (native)
+  hosts: all
+  become: yes
+  collections:
+    - community.general
+
+  vars:
+    immich_user: "immich"
+    immich_group: "immich"
+    immich_uid: 1001
+    immich_gid: 1001
+    immich_home: "/var/lib/immich"
+    immich_app_dir: "{{ immich_home }}/app"
+    immich_upload_dir: "{{ immich_home }}/upload"
+    immich_cache_dir: "{{ immich_home }}/cache"
+    immich_log_dir: "/var/log/immich"
+    immich_version: "v2.7.4"
+    timezone: "America/Sao_Paulo"
+    dns_servers:
+      - "192.168.0.2"
+      - "1.1.1.1"
+    postgres_db: "immich"
+    postgres_user: "immich"
+    postgres_password: "{{ lookup('env', 'IMMICH_POSTGRES_PASSWORD', default='') }}"
+    postgresql_version: "18"
+
+  tasks:
+    - name: Disable systemd-resolved if enabled
+      shell: systemctl disable --now systemd-resolved
+      register: resolved_disable
+      failed_when: false
+      changed_when: resolved_disable.rc == 0
+
+    - name: Set resolv.conf for installer
+      copy:
+        dest: /etc/resolv.conf
+        content: |
+          nameserver {{ dns_servers[0] }}
+          nameserver {{ dns_servers[1] }}
+        mode: '0644'
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install system dependencies
+      apt:
+        name:
+          - curl
+          - git
+          - gnupg
+          - ca-certificates
+          - lsb-release
+          - software-properties-common
+          - build-essential
+          - python3
+          - python3-venv
+          - python3-pip
+          - python3-psycopg2
+          - ffmpeg
+          - libvips-dev
+          - libvips-tools
+          - redis-server
+          - postgresql
+          - postgresql-contrib
+          - postgresql-client
+          - wget
+          - unzip
+          - pkg-config
+        state: present
+
+    - name: Install pgvector PostgreSQL extension
+      apt:
+        name: "postgresql-{{ postgresql_version }}-pgvector"
+        state: present
+
+    - name: Install Node.js and npm
+      apt:
+        name:
+          - nodejs
+          - npm
+        state: present
+
+    - name: Install pnpm globally
+      npm:
+        name: pnpm
+        global: yes
+        state: present
+
+    - name: Create immich user and group
+      user:
+        name: "{{ immich_user }}"
+        uid: "{{ immich_uid }}"
+        group: "{{ immich_group }}"
+        shell: /bin/bash
+        system: yes
+        create_home: no
+        home: "{{ immich_home }}"
+        state: present
+
+    - name: Create Immich directories
+      file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ immich_user }}"
+        group: "{{ immich_group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ immich_home }}", mode: '0700' }
+        - { path: "{{ immich_app_dir }}", mode: '0700' }
+        - { path: "{{ immich_upload_dir }}", mode: '0700' }
+        - { path: "{{ immich_cache_dir }}", mode: '0700' }
+        - { path: "{{ immich_log_dir }}", mode: '0700' }
+
+    - name: Configure PostgreSQL for Immich
+      postgresql_user:
+        name: "{{ postgres_user }}"
+        password: "{{ postgres_password }}"
+        state: present
+
+    - name: Create Immich database
+      postgresql_db:
+        name: "{{ postgres_db }}"
+        owner: "{{ postgres_user }}"
+        state: present
+
+
+    - name: Create pgvector extension in Immich database
+      become_user: postgres
+      shell: |
+        psql -d {{ postgres_db }} -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+    - name: Download and run immich-native installer
+      become_user: "{{ immich_user }}"
+      environment:
+        NODE_OPTIONS: "--max-old-space-size=4096"
+        PATH: "{{ ansible_env.PATH }}"
+      shell: |
+        set -xeuo pipefail
+        TMP_DIR=$(mktemp -d)
+        cd "$TMP_DIR"
+        
+        # Clone immich-native repository
+        git clone https://github.com/arter97/immich-native.git .
+        
+        # Run the installer with specific version
+        IMMICH_PATH="{{ immich_home }}" REV="{{ immich_version }}" ./install.sh
+        
+        cd /
+        rm -rf "$TMP_DIR"
+      args:
+        creates: "{{ immich_app_dir }}/start.sh"
+
+    - name: Create Immich environment file
+      copy:
+        dest: "{{ immich_home }}/env"
+        content: |
+          # Immich Configuration
+          IMMICH_VERSION={{ immich_version }}
+          
+          # Server Settings
+          IMMICH_WEB_URL=http://immich.home.arpa:2283
+          IMMICH_API_URL=http://immich.home.arpa:2283/api
+          
+          # Database Settings
+          DB_HOSTNAME=localhost
+          DB_USERNAME={{ postgres_user }}
+          DB_PASSWORD={{ postgres_password }}
+          DB_DATABASE_NAME={{ postgres_db }}
+          
+          # Redis Settings
+          REDIS_HOSTNAME=localhost
+          
+          # Upload and Library Paths
+          UPLOAD_LOCATION={{ immich_upload_dir }}
+          LIBRARY_LOCATION={{ immich_upload_dir }}
+          
+          # Timezone
+          TZ={{ timezone }}
+          
+          # Logging
+          LOG_LEVEL=info
+        mode: '0600'
+        owner: "{{ immich_user }}"
+        group: "{{ immich_group }}"
+
+    - name: Deploy systemd service files
+      template:
+        src: "templates/{{ item }}"
+        dest: "/etc/systemd/system/{{ item | replace('.j2', '') }}"
+        mode: '0644'
+      loop:
+        - immich.service.j2
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start Immich services
+      systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - immich
+
+    - name: Ensure Redis is running
+      systemd:
+        name: redis-server
+        state: started
+        enabled: yes
+
+    - name: Ensure PostgreSQL is running
+      systemd:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Show Immich service status
+      shell: systemctl status immich --no-pager
+      register: immich_status
+      changed_when: false
+
+    - name: Display Immich status
+      debug:
+        msg: "Immich services deployed. Access at http://immich.home.arpa:2283"
