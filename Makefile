@@ -1,7 +1,7 @@
 DEBUG ?= 0
 ANSIBLE_VERBOSE = $(if $(filter 1,$(DEBUG)),-vvv,)
 
-.PHONY: all run debug help pihole nginx crawler immich
+.PHONY: all run debug help pihole nginx crawler immich ftp vaultwarden
 
 all: pihole
 
@@ -15,6 +15,8 @@ help:
 	@printf "  nginx\n"
 	@printf "  crawler\n"
 	@printf "  immich\n"
+	@printf "  ftp\n"
+	@printf "  vaultwarden\n"
 
 run: $(word 2,$(MAKECMDGOALS))
 
@@ -106,6 +108,54 @@ immich:
 		-i "$$LXC_IP," \
 		-u root \
 		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
-		./services/immich/ansible/immich.yml; \
+		./services/immich/ansible/immich.yml;
+
+ftp:
+	tofu -chdir=./services/ftp/terraform init -upgrade
+	tofu -chdir=./services/ftp/terraform destroy -auto-approve
+	tofu -chdir=./services/ftp/terraform apply -auto-approve
+	LXC_IP=$$(tofu -chdir=./services/ftp/terraform output -raw lxc_ip); \
+	echo "LXC IP: $$LXC_IP"; \
+	ssh-keygen -R "$$LXC_IP"; \
+	ansible localhost $(ANSIBLE_VERBOSE) -m wait_for -a "host=$$LXC_IP port=22 delay=2 timeout=300"; \
+	set -a; \
+	. ./.env; \
+	set +a; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$LXC_IP," \
+		-u root \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		./services/ftp/ansible/ftp.yml; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$LXC_IP," \
+		-u root \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		-e "tailscale_args=--accept-routes --accept-dns=false" \
+		./shared/ansible/tailscale.yml
+
+vaultwarden:
+	tofu -chdir=./services/vaultwarden/terraform init -upgrade
+	tofu -chdir=./services/vaultwarden/terraform destroy -auto-approve
+	tofu -chdir=./services/vaultwarden/terraform apply -auto-approve
+	LXC_IP=$$(tofu -chdir=./services/vaultwarden/terraform output -raw lxc_ip); \
+	echo "LXC IP: $$LXC_IP"; \
+	ssh-keygen -R "$$LXC_IP"; \
+	ansible localhost $(ANSIBLE_VERBOSE) -m wait_for -a "host=$$LXC_IP port=22 delay=2 timeout=300"; \
+	set -a; \
+	. ./.env; \
+	set +a; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$LXC_IP," \
+		-u root \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		./services/vaultwarden/ansible/vaultwarden.yml; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$LXC_IP," \
+		-u root \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		-e "tailscale_args=--accept-routes --accept-dns=false" \
+		./shared/ansible/tailscale.yml
+
+
 %:
 	@:

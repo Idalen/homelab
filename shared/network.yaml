@@ -14,6 +14,8 @@ external_dns:
 service_ips:
   pihole: "192.168.0.2"
   nginx: "192.168.0.3"
+  ftp: "192.168.0.5"
+  vaultwarden: "192.168.0.6"
   crawler: "192.168.0.21"
   # immich: variable (defined per deployment)
   # media: variable (defined per deployment)
