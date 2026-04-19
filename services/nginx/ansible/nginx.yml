@@ -98,3 +98,23 @@
       ansible.builtin.systemd:
         name: nginx
         state: reloaded
+
+    - name: Download nginxui install script
+      ansible.builtin.get_url:
+        url: https://cloud.nginxui.com/install.sh
+        dest: /tmp/nginxui_install.sh
+        mode: '0755'
+
+    - name: Run nginxui install script
+        ansible.builtin.command: /tmp/nginxui_install.sh
+        args:
+        creates: /usr/local/bin/nginxui
+
+    - name: Run nginxui service
+        ansible.builtin.systemd:
+          name: nginx-ui
+          state: started
+          enabled: yes
+          daemon_reload: yes
+
+
