@@ -10,6 +10,10 @@
     ssl_key_path: /etc/nginx/certs/home-arpa.key
     ssl_subject: "/CN=*.home.arpa"
     ssl_san: "DNS:*.home.arpa,DNS:home.arpa,DNS:localhost"
+    ssl_ts_cert_path: /etc/nginx/certs/ts.crt
+    ssl_ts_key_path: /etc/nginx/certs/ts.key
+    ssl_ts_subject: "/CN=*.ts.net"
+    ssl_ts_san: "DNS:*.ts.net"
     ssl_days: 3650
     dns_server_1: "192.168.0.2"
     dns_server_2: "1.1.1.1"
@@ -53,7 +57,7 @@
         - /etc/nginx/sites-enabled
         - /etc/nginx/certs
 
-    - name: Generate self-signed SSL certificate if not present
+    - name: Generate self-signed SSL certificate for *.home.arpa if not present
       shell: |
         openssl req -x509 -nodes -newkey rsa:2048 \
           -days {{ ssl_days }} \
@@ -63,6 +67,17 @@
           -addext 'subjectAltName={{ ssl_san }}'
       args:
         creates: "{{ ssl_cert_path }}"
+
+    - name: Generate self-signed SSL certificate for *.ts.net if not present
+      shell: |
+        openssl req -x509 -nodes -newkey rsa:2048 \
+          -days {{ ssl_days }} \
+          -keyout {{ ssl_ts_key_path }} \
+          -out {{ ssl_ts_cert_path }} \
+          -subj '{{ ssl_ts_subject }}' \
+          -addext 'subjectAltName={{ ssl_ts_san }}'
+      args:
+        creates: "{{ ssl_ts_cert_path }}"
 
     - name: Copy NGINX site configurations
       ansible.builtin.copy:
@@ -106,15 +121,15 @@
         mode: '0755'
 
     - name: Run nginxui install script
-        ansible.builtin.command: /tmp/nginxui_install.sh
-        args:
+      ansible.builtin.command:
+        cmd: /tmp/nginxui_install.sh
         creates: /usr/local/bin/nginxui
 
     - name: Run nginxui service
-        ansible.builtin.systemd:
-          name: nginx-ui
-          state: started
-          enabled: yes
-          daemon_reload: yes
+      ansible.builtin.systemd:
+        name: nginx-ui
+        state: started
+        enabled: yes
+        daemon_reload: yes
 
 

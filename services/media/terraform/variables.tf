@@ -33,6 +33,13 @@ variable "proxmox_ssh_user" {
   default     = "root"
 }
 
+variable "proxmox_ssh_password" {
+  type        = string
+  description = "SSH password for the Proxmox host (optional)."
+  default     = ""
+  sensitive   = true
+}
+
 variable "vm_ssh_user" {
   type        = string
   description = "Cloud-init SSH user"
@@ -40,7 +47,7 @@ variable "vm_ssh_user" {
 
 variable "vm_ssh_keys" {
   type        = string
-  description = "SSH public keys for cloud-init"
+  description = "Path to SSH public key file for cloud-init (e.g., ~/.ssh/id_rsa.pub)"
   sensitive   = true
 }
 

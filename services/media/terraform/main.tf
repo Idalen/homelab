@@ -15,12 +15,18 @@ provider "proxmox" {
   pm_tls_insecure = var.pm_tls_insecure
 }
 
+locals {
+  ssh_key_path = replace(var.vm_ssh_keys, "~", pathexpand("~"))
+}
+
 module "cloud_config" {
   source = "../../../modules/cloud_config"
 
-  proxmox_host = var.proxmox_host
-  ssh_user     = var.proxmox_ssh_user
-  vm_name      = "media"
+  proxmox_host      = var.proxmox_host
+  ssh_user          = var.proxmox_ssh_user
+  ssh_password      = var.proxmox_ssh_password
+  vm_name           = "media"
+  cloud_config_src  = "cloud-config.yaml"
 }
 
 module "media_vm" {
@@ -33,7 +39,7 @@ module "media_vm" {
   vm_ip      = var.vm_ip
   vm_gateway = var.vm_gateway
   ciuser     = var.vm_ssh_user
-  sshkeys    = var.vm_ssh_keys
+  sshkeys    = file(local.ssh_key_path)
   cicustom   = "vendor=local:snippets/${basename(module.cloud_config.snippet_path)}"
 
   memory    = 6144

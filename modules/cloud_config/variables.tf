@@ -26,3 +26,16 @@ variable "vm_name" {
   type        = string
   description = "VM name used to derive the cloud-config path."
 }
+
+variable "ssh_password" {
+  type        = string
+  description = "SSH password for the Proxmox host (optional)."
+  default     = ""
+  sensitive   = true
+}
+
+variable "ssh_private_key" {
+  type        = string
+  description = "Path to SSH private key for the Proxmox host (optional)."
+  default     = ""
+}

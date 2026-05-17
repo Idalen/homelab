@@ -1,7 +1,7 @@
 DEBUG ?= 0
 ANSIBLE_VERBOSE = $(if $(filter 1,$(DEBUG)),-vvv,)
 
-.PHONY: all run debug help pihole nginx crawler immich ftp vaultwarden
+.PHONY: all run debug help pihole nginx crawler immich ftp vaultwarden media
 
 all: pihole
 
@@ -17,6 +17,7 @@ help:
 	@printf "  immich\n"
 	@printf "  ftp\n"
 	@printf "  vaultwarden\n"
+	@printf "  media\n"
 
 run: $(word 2,$(MAKECMDGOALS))
 
@@ -155,6 +156,26 @@ vaultwarden:
 		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
 		-e "tailscale_args=--accept-routes --accept-dns=false" \
 		./shared/ansible/tailscale.yml
+
+media:
+	tofu -chdir=./services/media-v2/terraform init -upgrade
+	tofu -chdir=./services/media-v2/terraform apply -auto-approve
+	VMID=$$(tofu -chdir=./services/media-v2/terraform output -raw vmid); \
+	echo "VMID: $$VMID"; \
+	VM_IP=$$(tofu -chdir=./services/media-v2/terraform output -raw vm_ip); \
+	echo "VM IP: $$VM_IP"; \
+	./services/media-v2/scripts/configure-vm.sh "$$VMID"; \
+	set -a; \
+	. ./.env 2>/dev/null || true; \
+	set +a; \
+	ssh-keygen -R "$$VM_IP"; \
+	ansible localhost $(ANSIBLE_VERBOSE) -m wait_for -a "host=$$VM_IP port=22 delay=2 timeout=300"; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$VM_IP," \
+		-u ubuntu \
+		--become \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		./services/media-v2/ansible/media.yml
 
 
 %:

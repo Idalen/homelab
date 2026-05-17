@@ -12,7 +12,10 @@ resource "null_resource" "cloud_config_snippet" {
     type  = "ssh"
     host  = var.proxmox_host
     user  = var.ssh_user
-    agent = true
+    agent = var.ssh_password == "" && var.ssh_private_key == ""
+    
+    password     = var.ssh_password != "" ? var.ssh_password : null
+    private_key  = var.ssh_private_key != "" ? file(var.ssh_private_key) : null
   }
 
   provisioner "remote-exec" {

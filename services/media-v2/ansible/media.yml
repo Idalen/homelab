@@ -1,0 +1,131 @@
+---
+# media.yml — Deploy Jellyfin + qBittorrent via Docker on media-v2 VM
+- name: Deploy media stack
+  hosts: all
+  become: true
+  vars:
+    media_user: "ubuntu"
+    media_group: "ubuntu"
+    mount_point: "/mnt/media"
+    usb_device: "/dev/sda1"
+    compose_dir: "/opt/media-stack"
+    appdata_dir: "{{ mount_point }}/appdata"
+    downloads_dir: "{{ mount_point }}/downloads"
+    media_dir: "{{ mount_point }}/media"
+
+  tasks:
+    - name: Wait for cloud-init to finish
+      command: cloud-init status --wait
+      changed_when: false
+      failed_when: false
+
+    - name: Install Docker dependencies
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+        update_cache: true
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker APT repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: Install Docker Engine
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+
+    - name: Ensure Docker is running and enabled
+      systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add media user to docker group
+      user:
+        name: "{{ media_user }}"
+        groups: docker
+        append: true
+
+    - name: Get UUID of USB device
+      command: blkid -s UUID -o value "{{ usb_device }}"
+      register: usb_uuid
+      changed_when: false
+      failed_when: false
+
+    - name: Create mount point
+      file:
+        path: "{{ mount_point }}"
+        state: directory
+        mode: "0755"
+
+    - name: Add USB device to fstab
+      lineinfile:
+        path: /etc/fstab
+        line: "UUID={{ usb_uuid.stdout }}  {{ mount_point }}  ext4  defaults,nofail  0  2"
+        regexp: "{{ mount_point }}"
+        state: present
+      when: usb_uuid.stdout != ""
+
+    - name: Mount USB device
+      mount:
+        path: "{{ mount_point }}"
+        src: "UUID={{ usb_uuid.stdout }}"
+        fstype: ext4
+        opts: defaults,nofail
+        state: mounted
+      when: usb_uuid.stdout != ""
+
+    - name: Create appdata directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+        owner: "{{ media_user }}"
+        group: "{{ media_group }}"
+      loop:
+        - "{{ appdata_dir }}/qbittorrent/config"
+        - "{{ appdata_dir }}/jellyfin/config"
+        - "{{ appdata_dir }}/jellyfin/cache"
+        - "{{ downloads_dir }}"
+        - "{{ media_dir }}"
+
+    - name: Create compose directory
+      file:
+        path: "{{ compose_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Deploy docker-compose.yml
+      copy:
+        src: ../config/docker-compose.yml
+        dest: "{{ compose_dir }}/docker-compose.yml"
+        mode: "0644"
+
+    - name: Pull latest images
+      command: docker compose pull
+      args:
+        chdir: "{{ compose_dir }}"
+      register: pull_result
+      changed_when: '"Downloaded" in pull_result.stdout or "Pulled" in pull_result.stdout'
+      failed_when: pull_result.rc != 0
+
+    - name: Start Docker stack
+      command: docker compose up -d
+      args:
+        chdir: "{{ compose_dir }}"
+      register: up_result
+      changed_when: '"Creating" in up_result.stdout or "Started" in up_result.stdout'
