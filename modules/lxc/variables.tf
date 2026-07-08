@@ -80,6 +80,18 @@ variable "disk_size" {
   default     = 8
 }
 
+variable "enable_keyctl" {
+  type        = bool
+  description = "Enable keyctl in container features"
+  default     = false
+}
+
+variable "enable_nesting" {
+  type        = bool
+  description = "Enable container nesting (needed for Docker)"
+  default     = false
+}
+
 variable "template_file_id" {
   type        = string
   description = "OS template ID"

@@ -1,7 +1,7 @@
 DEBUG ?= 0
 ANSIBLE_VERBOSE = $(if $(filter 1,$(DEBUG)),-vvv,)
 
-.PHONY: all run debug help pihole nginx crawler media
+.PHONY: all run debug help pihole nginx crawler ladder flaresolverr media bookorbit
 
 all: pihole
 
@@ -14,8 +14,10 @@ help:
 	@printf "  pihole\n"
 	@printf "  nginx\n"
 	@printf "  crawler\n"
-
+	@printf "  ladder\n"
+	@printf "  flaresolverr\n"
 	@printf "  media\n"
+	@printf "  bookorbit\n"
 
 run: $(word 2,$(MAKECMDGOALS))
 
@@ -92,9 +94,60 @@ crawler:
 		-e "go_version=$$GO_VERSION" \
 		./services/crawler/ansible/crawler.yml	
 
+ladder:
+	tofu -chdir=./services/ladder/terraform init -upgrade
+	tofu -chdir=./services/ladder/terraform destroy -auto-approve
+	tofu -chdir=./services/ladder/terraform apply -auto-approve
+	LXC_IP=$$(tofu -chdir=./services/ladder/terraform output -raw lxc_ip); \
+	echo "LXC IP: $$LXC_IP"; \
+	ssh-keygen -R "$$LXC_IP"; \
+	ansible localhost $(ANSIBLE_VERBOSE) -m wait_for -a "host=$$LXC_IP port=22 delay=2 timeout=300"; \
+	set -a; \
+	. ./.env; \
+	set +a; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$LXC_IP," \
+		-u root \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		./services/ladder/ansible/ladder.yml
+
+flaresolverr:
+	tofu -chdir=./services/flaresolverr/terraform init -upgrade
+	tofu -chdir=./services/flaresolverr/terraform destroy -auto-approve
+	tofu -chdir=./services/flaresolverr/terraform apply -auto-approve
+	LXC_IP=$$(tofu -chdir=./services/flaresolverr/terraform output -raw lxc_ip); \
+	echo "LXC IP: $$LXC_IP"; \
+	ssh-keygen -R "$$LXC_IP"; \
+	ansible localhost $(ANSIBLE_VERBOSE) -m wait_for -a "host=$$LXC_IP port=22 delay=2 timeout=300"; \
+	set -a; \
+	. ./.env; \
+	set +a; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$LXC_IP," \
+		-u root \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		./services/flaresolverr/ansible/flaresolverr.yml
+
 media:
 	tofu -chdir=./services/media/terraform init -upgrade
 	tofu -chdir=./services/media/terraform apply -auto-approve
+
+bookorbit:
+	tofu -chdir=./services/bookorbit/terraform init -upgrade
+	tofu -chdir=./services/bookorbit/terraform destroy -auto-approve
+	tofu -chdir=./services/bookorbit/terraform apply -auto-approve
+	LXC_IP=$$(tofu -chdir=./services/bookorbit/terraform output -raw lxc_ip); \
+	echo "LXC IP: $$LXC_IP"; \
+	ssh-keygen -R "$$LXC_IP"; \
+	ansible localhost $(ANSIBLE_VERBOSE) -m wait_for -a "host=$$LXC_IP port=22 delay=2 timeout=300"; \
+	set -a; \
+	. ./.env; \
+	set +a; \
+	ansible-playbook $(ANSIBLE_VERBOSE) \
+		-i "$$LXC_IP," \
+		-u root \
+		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+		./services/bookorbit/ansible/bookorbit.yml
 
 %:
 	@:

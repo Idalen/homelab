@@ -10,6 +10,11 @@ resource "proxmox_virtual_environment_container" "container" {
 
   unprivileged = var.unprivileged
 
+  features {
+    nesting = var.enable_nesting
+    keyctl  = var.enable_keyctl
+  }
+
   cpu {
     cores = var.cpu_cores
   }

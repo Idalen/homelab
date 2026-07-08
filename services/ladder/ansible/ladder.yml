@@ -1,0 +1,84 @@
+---
+- name: Install and configure Ladder + Flaresolverr
+  hosts: all
+  become: yes
+  collections:
+    - community.general
+
+  tasks:
+    - name: Disable systemd-resolved if enabled
+      shell: systemctl disable --now systemd-resolved
+      register: resolved_disable
+      failed_when: false
+      changed_when: resolved_disable.rc == 0
+
+    - name: Set resolv.conf for installer
+      copy:
+        dest: /etc/resolv.conf
+        content: |
+          nameserver 1.1.1.1
+          nameserver 1.0.0.1
+        mode: '0644'
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install Docker dependencies
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker APT repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: Install Docker Engine
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Start Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create compose directory
+      file:
+        path: /srv/ladder
+        state: directory
+        mode: '0755'
+
+    - name: Deploy docker-compose.yml
+      copy:
+        src: ../config/docker-compose.yml
+        dest: /srv/ladder/docker-compose.yml
+        mode: '0644'
+
+    - name: Deploy rules.yaml
+      copy:
+        src: ../config/rules.yaml
+        dest: /srv/ladder/rules.yaml
+        mode: '0644'
+
+    - name: Start services
+      command: docker compose up -d
+      args:
+        chdir: /srv/ladder
+      register: compose_up
+      changed_when: "'Starting' in compose_up.stdout or 'Creating' in compose_up.stdout or 'Pulling' in compose_up.stdout"

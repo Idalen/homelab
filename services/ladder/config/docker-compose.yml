@@ -1,0 +1,17 @@
+services:
+  ladder:
+    image: ghcr.io/everywall/ladder:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - RULESET=/rules/rules.yaml
+      - FLARESOLVERR_HOST=http://flaresolverr:8191
+    volumes:
+      - /srv/ladder/rules.yaml:/rules/rules.yaml
+    restart: always
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    environment:
+      - LOG_LEVEL=info
+    restart: always

@@ -1,0 +1,25 @@
+- domain: "*"
+  useFlareSolverr: true
+  injections:
+    - position: head
+      append: |
+        <style>
+          [id*="cookie"], [class*="cookie"], [id*="consent"], [class*="consent"],
+          [id*="gdpr"], [id*="gdpr"], [id*="ccpa"], [class*="ccpa"],
+          #onetrust-consent-sdk, #CybotCookiebotDialog, .fc-consent-root,
+          [class*="newsletter"], [class*="signup"], [class*="subscribe"],
+          [class*="popup-overlay"], [class*="modal-overlay"],
+          [class*="sticky-header"], [class*="fixed-header"],
+          [class*="floating-video"], [class*="sticky-video"],
+          [class*="app-banner"], [class*="app-download"], [class*="smart-banner"],
+          [class*="mobile-app"], .pwa-prompt, .pwa-install,
+          [class*="ai-chat"], [class*="chat-widget"], [class*="chatbot"],
+          [class*="intercom"], [class*="help-widget"], [class*="drift-"],
+          [class*="paywall"], [class*="meter"], .tp-modal, .tp-backdrop,
+          [class*="share-bar"], [class*="social-bar"],
+          [id*="taboola"], [class*="taboola"], [id*="outbrain"], [class*="outbrain"],
+          .OUTBRAIN, #rcjsload_
+          { display: none !important; }
+          body { overflow: auto !important; }
+          html { overflow: auto !important; }
+        </style>
