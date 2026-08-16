@@ -5,17 +5,16 @@
     - community.general
 
   vars:
-    lxc_ssh_user: "{{ lxc_ssh_user | default('root') }}"
-    telegram_bot_token: "{{ telegram_bot_token | default('') }}"
-    go_version: "{{ go_version | default('1.22.0') }}"
-    crawler_repo: "{{ crawler_repo | default('https://github.com/Idalen/telegrambot.git') }}"
+
+    go_version: "1.22.0"
+    crawler_repo: "https://github.com/Idalen/telegrambot.git"
     home_dir: "{{ '/root' if lxc_ssh_user == 'root' else '/home/' + lxc_ssh_user }}"
     crawler_dir: "{{ home_dir }}/crawler"
 
   tasks:
     - name: Validate required variables
       ansible.builtin.fail:
-        msg: "telegram_bot_token must be set"
+        msg: "TELEGRAM_BOT_TOKEN must be set"
       when: telegram_bot_token | length == 0
 
     - name: Disable systemd-resolved if enabled
@@ -69,8 +68,6 @@
         update: yes
         force: yes
         clone: yes
-        owner: "{{ lxc_ssh_user }}"
-        group: "{{ lxc_ssh_user }}"
 
     - name: Create crawler environment file
       ansible.builtin.copy:

@@ -90,8 +90,8 @@ crawler:
 		-u root \
 		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
 		-e "telegram_bot_token=$$TELEGRAM_BOT_TOKEN" \
-		-e "lxc_ssh_user=$$LXC_SSH_USER" \
-		-e "go_version=$$GO_VERSION" \
+		-e "lxc_ssh_user=$${LXC_SSH_USER:-root}" \
+		-e "go_version=$${GO_VERSION:-1.22.0}" \
 		./services/crawler/ansible/crawler.yml	
 
 ladder:
