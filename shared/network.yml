@@ -11,11 +11,15 @@ external_dns:
   - "1.0.0.1"
 
 # Service IP assignments
-service_ips:
+ips:
   pihole: "192.168.0.2"
   nginx: "192.168.0.3"
+  ladder: "192.168.0.5"
+  bookorbit: "192.168.0.7"
+  matrix: "192.168.0.19"
   ftp: "192.168.0.5"
   vaultwarden: "192.168.0.6"
+  syncthing: "192.168.0.8"
   crawler: "192.168.0.21"
   # immich: variable (defined per deployment)
   # media: variable (defined per deployment)
@@ -24,13 +28,5 @@ service_ips:
 dhcp_start: "192.168.0.50"
 dhcp_end: "192.168.0.250"
 
-# Domain
+# DNS search domain for LXC containers
 domain: "home.arpa"
-
-# Nginx configuration
-nginx:
-  ssl_cert_path: "/etc/nginx/certs/home-arpa.crt"
-  ssl_key_path: "/etc/nginx/certs/home-arpa.key"
-  ssl_subject: "/CN=*.home.arpa"
-  ssl_san: "DNS:*.home.arpa,DNS:home.arpa,DNS:localhost"
-  ssl_days: 3650

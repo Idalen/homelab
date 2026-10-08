@@ -31,6 +31,10 @@ variable "pm_tls_insecure" {
   default     = true
 }
 
+locals {
+  network = yamldecode(file("${path.module}/../../../shared/network.yml"))
+}
+
 provider "proxmox" {
   endpoint = var.pm_api_url
   username = var.pm_user
@@ -45,10 +49,11 @@ module "lxc" {
   description = "Matrix instance"
   vmid        = 109
 
-  ip_address = "192.168.0.19/24"
-  gateway    = "192.168.0.1"
+  ip_address = "${local.network.ips.matrix}/${split("/", local.network.subnet)[1]}"
+  gateway    = local.network.gateway
 
-  dns_servers = ["192.168.0.2", "1.1.1.1"]
+  dns_domain  = local.network.domain
+  dns_servers = [local.network.ips.pihole, local.network.external_dns[0]]
 
   disk_size = 4
 
