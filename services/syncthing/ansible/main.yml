@@ -1,0 +1,122 @@
+---
+- name: Install and configure Syncthing
+  hosts: syncthing
+  become: true
+  gather_facts: false
+
+  pre_tasks:
+    - name: Wait for the Syncthing host to accept connections
+      ansible.builtin.wait_for_connection:
+        delay: 2
+        timeout: 300
+      when: not ansible_check_mode
+
+    - name: Gather host facts
+      ansible.builtin.setup:
+
+  vars:
+    syncthing_dir: /opt/syncthing
+    syncthing_uid: 1000
+    syncthing_gid: 1000
+    docker_arch: amd64
+
+  tasks:
+    - name: Install repository prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - python3-debian
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Remove legacy Docker APT repository
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/download_docker_com_linux_ubuntu.list
+        state: absent
+
+    - name: Configure Docker APT repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: https://download.docker.com/linux/ubuntu
+        suites: ["{{ ansible_distribution_release }}"]
+        components: [stable]
+        architectures: ["{{ docker_arch }}"]
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+        enabled: true
+      register: docker_repository
+
+    - name: Install Docker Engine
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: "{{ docker_repository.changed }}"
+        cache_valid_time: 3600
+
+    - name: Ensure Docker is running
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create Syncthing project directory
+      ansible.builtin.file:
+        path: "{{ syncthing_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create persistent Syncthing storage
+      ansible.builtin.file:
+        path: "{{ syncthing_dir }}/storage"
+        state: directory
+        owner: "{{ syncthing_uid }}"
+        group: "{{ syncthing_gid }}"
+        mode: "0700"
+
+    - name: Deploy Docker Compose configuration
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../config/docker-compose.yml"
+        dest: "{{ syncthing_dir }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Deploy Syncthing environment
+      ansible.builtin.copy:
+        content: |
+          PUID={{ syncthing_uid }}
+          PGID={{ syncthing_gid }}
+        dest: "{{ syncthing_dir }}/.env"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Ensure Syncthing is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ syncthing_dir }}"
+        state: present
+        pull: missing
+        recreate: auto
+        remove_orphans: true
+
+    - name: Wait for the Syncthing GUI to respond
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8384/rest/noauth/health
+        status_code: 200
+      register: syncthing_health
+      until: syncthing_health.status | default(0) == 200
+      retries: 30
+      delay: 2
+      when: not ansible_check_mode
+
+    - name: Show how to access the Syncthing GUI
+      ansible.builtin.debug:
+        msg: "Run ssh -N -L 8384:127.0.0.1:8384 root@{{ ansible_host }}, then open http://localhost:8384."

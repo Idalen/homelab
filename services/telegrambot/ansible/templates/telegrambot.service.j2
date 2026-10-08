@@ -1,14 +1,14 @@
 [Unit]
-Description=Crawler Telegram Bot
+Description=Telegram Bot
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User={{ lxc_ssh_user }}
-WorkingDirectory={{ crawler_dir }}
-EnvironmentFile={{ crawler_env_file }}
-ExecStart={{ crawler_binary }}
+WorkingDirectory={{ telegrambot_dir }}
+EnvironmentFile={{ telegrambot_env_file }}
+ExecStart={{ telegrambot_binary }}
 Restart=always
 RestartSec=5
 

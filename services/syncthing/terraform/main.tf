@@ -44,7 +44,7 @@ variable "vmid" {
 variable "disk_size" {
   type        = number
   description = "Root disk size in GB, including synchronized files"
-  default     = 32
+  default     = 16
 }
 
 provider "proxmox" {
@@ -67,7 +67,8 @@ module "lxc" {
   dns_domain  = local.network.domain
   dns_servers = concat([local.network.ips.pihole], local.network.external_dns)
 
-  memory_dedicated  = 1024
+  cpu_cores         = 1
+  memory_dedicated  = 512
   disk_size         = var.disk_size
   enable_nesting    = true
   enable_tun_device = false

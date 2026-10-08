@@ -1,6 +1,6 @@
-.PHONY: all help pihole nginx crawler ladder media bookorbit syncthing
+.PHONY: all help pihole nginx telegrambot ladder media bookorbit syncthing
 
-all: pihole nginx crawler ladder media bookorbit syncthing
+all: pihole nginx telegrambot ladder media bookorbit syncthing
 
 help:
 	@printf "Targets:\n"
@@ -10,7 +10,7 @@ help:
 	@printf "Existing services:\n"
 	@printf "  pihole\n"
 	@printf "  nginx\n"
-	@printf "  crawler\n"
+	@printf "  telegrambot\n"
 	@printf "  ladder\n"
 	@printf "  media\n"
 	@printf "  bookorbit\n"
@@ -25,9 +25,9 @@ nginx:
 	tofu -chdir=./services/nginx/terraform apply -auto-approve
 	ansible-playbook ./services/nginx/ansible/main.yml
 
-crawler:
-	tofu -chdir=./services/crawler/terraform apply -auto-approve
-	ansible-playbook ./services/crawler/ansible/main.yml
+telegrambot:
+	tofu -chdir=./services/telegrambot/terraform apply -auto-approve
+	ansible-playbook ./services/telegrambot/ansible/main.yml
 
 ladder:	
 	tofu -chdir=./services/ladder/terraform apply -auto-approve
@@ -43,6 +43,7 @@ bookorbit:
 
 syncthing:
 	tofu -chdir=./services/syncthing/terraform apply -auto-approve
+	ansible-playbook ./services/syncthing/ansible/main.yml
 
 %:
 	@:

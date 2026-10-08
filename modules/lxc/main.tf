@@ -1,6 +1,6 @@
 locals {
   container_description = var.description != "" ? var.description : var.name
-  ssh_key_path         = replace(var.ssh_public_key_path, "~", pathexpand("~"))
+  ssh_key_path          = replace(var.ssh_public_key_path, "~", pathexpand("~"))
 }
 
 resource "proxmox_virtual_environment_container" "container" {
@@ -39,11 +39,14 @@ resource "proxmox_virtual_environment_container" "container" {
       servers = var.dns_servers
     }
 
-    user_account {
-      password = var.ssh_password
-      keys = [
-        file(local.ssh_key_path)
-      ]
+    dynamic "user_account" {
+      for_each = var.configure_initial_user ? [1] : []
+      content {
+        password = var.ssh_password
+        keys = [
+          file(local.ssh_key_path)
+        ]
+      }
     }
   }
 

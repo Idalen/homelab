@@ -1,0 +1,14 @@
+services:
+  syncthing:
+    image: syncthing/syncthing:latest
+    container_name: syncthing
+    hostname: syncthing
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      STGUIADDRESS: 127.0.0.1:8384
+    volumes:
+      - ./storage:/var/syncthing
+    stop_grace_period: 60s

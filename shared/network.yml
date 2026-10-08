@@ -20,7 +20,7 @@ ips:
   ftp: "192.168.0.5"
   vaultwarden: "192.168.0.6"
   syncthing: "192.168.0.8"
-  crawler: "192.168.0.21"
+  telegrambot: "192.168.0.201"
   # immich: variable (defined per deployment)
   # media: variable (defined per deployment)
 

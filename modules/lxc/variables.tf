@@ -55,6 +55,12 @@ variable "ssh_public_key_path" {
   default     = "~/.ssh/id_rsa.pub"
 }
 
+variable "configure_initial_user" {
+  type        = bool
+  description = "Configure creation-time SSH credentials; disable when importing an existing container"
+  default     = true
+}
+
 variable "ssh_password" {
   type        = string
   description = "SSH password for container"

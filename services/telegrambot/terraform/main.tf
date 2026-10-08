@@ -45,17 +45,23 @@ provider "proxmox" {
 module "lxc" {
   source = "../../../modules/lxc"
 
-  name        = "crawler"
+  name        = "telegrambot"
   description = "A telegram bot that crawls web"
-  vmid        = 300
+  vmid        = 201
 
-  ip_address = "${local.network.ips.crawler}/${split("/", local.network.subnet)[1]}"
+  ip_address = "${local.network.ips.telegrambot}/${split("/", local.network.subnet)[1]}"
   gateway    = local.network.gateway
 
   dns_domain  = local.network.domain
   dns_servers = [local.network.ips.pihole]
 
-  disk_size = 8
+  cpu_cores        = 1
+  memory_dedicated = 512
+  disk_size        = 10
 
   enable_tun_device = false
+
+  # CT 201 already exists; preserve its creation-time template and credentials.
+  configure_initial_user = false
+  template_file_id       = ""
 }

@@ -1,11 +1,11 @@
 ---
-- name: Install and configure Crawler Telegram Bot
-  hosts: crawler
+- name: Install and configure Telegram Bot
+  hosts: telegrambot
   become: true
   gather_facts: false
 
   pre_tasks:
-    - name: Wait for the crawler host to accept connections
+    - name: Wait for the telegrambot host to accept connections
       ansible.builtin.wait_for_connection:
         delay: 2
         timeout: 300
@@ -16,31 +16,31 @@
 
   vars:
     # Read plain or quoted .env values without executing shell code.
-    crawler_dotenv: >-
+    telegrambot_dotenv: >-
       {{ dict((lookup('ansible.builtin.file', playbook_dir ~ '/../../../.env', errors='ignore')
          | default('', true))
          | regex_findall('(?m)^(?:export[ \t]+)?(TELEGRAM_BOT_TOKEN|LXC_SSH_USER|GO_VERSION)[ \t]*=[ \t]*([^\r\n]*)$')) }}
     telegram_bot_token: >-
       {{ lookup('env', 'TELEGRAM_BOT_TOKEN')
-         | default(crawler_dotenv.get('TELEGRAM_BOT_TOKEN', '') | trim | trim("'\""), true) }}
+         | default(telegrambot_dotenv.get('TELEGRAM_BOT_TOKEN', '') | trim | trim("'\""), true) }}
     lxc_ssh_user: >-
       {{ lookup('env', 'LXC_SSH_USER')
-         | default(crawler_dotenv.get('LXC_SSH_USER', '') | trim | trim("'\""), true)
+         | default(telegrambot_dotenv.get('LXC_SSH_USER', '') | trim | trim("'\""), true)
          | default('root', true) }}
     go_version: >-
       {{ lookup('env', 'GO_VERSION')
-         | default(crawler_dotenv.get('GO_VERSION', '') | trim | trim("'\""), true)
+         | default(telegrambot_dotenv.get('GO_VERSION', '') | trim | trim("'\""), true)
          | default('1.25.5', true) }}
     go_arch: amd64
     go_install_dir: "/opt/go/{{ go_version }}"
     go_archive: "/var/cache/go{{ go_version }}.linux-{{ go_arch }}.tar.gz"
-    crawler_repo: "https://github.com/Idalen/telegrambot.git"
-    crawler_version: HEAD
+    telegrambot_repo: "https://github.com/Idalen/telegrambot.git"
+    telegrambot_version: HEAD
     home_dir: "{{ '/root' if lxc_ssh_user == 'root' else '/home/' + lxc_ssh_user }}"
-    crawler_dir: "{{ home_dir }}/crawler"
-    crawler_binary: /usr/local/bin/crawler
-    crawler_env_file: /etc/crawler.env
-    crawler_build_state_file: "{{ crawler_binary }}.build-state"
+    telegrambot_dir: "{{ home_dir }}/telegrambot"
+    telegrambot_binary: /usr/local/bin/telegrambot
+    telegrambot_env_file: /etc/telegrambot.env
+    telegrambot_build_state_file: "{{ telegrambot_binary }}.build-state"
 
   tasks:
     - name: Validate Telegram bot token
@@ -49,7 +49,7 @@
           - telegram_bot_token | length > 0
           - "'\n' not in telegram_bot_token"
           - "'\r' not in telegram_bot_token"
-        fail_msg: Set TELEGRAM_BOT_TOKEN before deploying the crawler.
+        fail_msg: Set TELEGRAM_BOT_TOKEN before deploying the telegrambot.
       no_log: true
 
     - name: Install dependencies
@@ -70,44 +70,44 @@
     - name: Check the requested Go installation
       ansible.builtin.stat:
         path: "{{ go_install_dir }}/bin/go"
-      register: crawler_go_binary
+      register: telegrambot_go_binary
 
     - name: Read official Go release checksums
       ansible.builtin.uri:
         url: "https://go.dev/dl/?mode=json&include=all"
         return_content: true
-      register: crawler_go_releases
+      register: telegrambot_go_releases
       changed_when: false
       check_mode: false
-      when: not crawler_go_binary.stat.exists
+      when: not telegrambot_go_binary.stat.exists
 
     - name: Select the requested Go archive metadata
       ansible.builtin.set_fact:
-        crawler_go_archive_metadata: >-
-          {{ ((crawler_go_releases.json
+        telegrambot_go_archive_metadata: >-
+          {{ ((telegrambot_go_releases.json
                | selectattr('version', 'equalto', 'go' ~ go_version)
                | first | default({})).get('files', [])
                | selectattr('filename', 'equalto',
                             'go' ~ go_version ~ '.linux-' ~ go_arch ~ '.tar.gz')
                | first | default({})) }}
-      when: not crawler_go_binary.stat.exists
+      when: not telegrambot_go_binary.stat.exists
 
     - name: Validate the requested Go release checksum
       ansible.builtin.assert:
         that:
-          - crawler_go_archive_metadata.get('sha256', '') is match('^[0-9a-f]{64}$')
+          - telegrambot_go_archive_metadata.get('sha256', '') is match('^[0-9a-f]{64}$')
         fail_msg: "No official Linux {{ go_arch }} archive found for Go {{ go_version }}."
-      when: not crawler_go_binary.stat.exists
+      when: not telegrambot_go_binary.stat.exists
 
     - name: Download the requested Go release
       ansible.builtin.get_url:
         url: "https://go.dev/dl/go{{ go_version }}.linux-{{ go_arch }}.tar.gz"
         dest: "{{ go_archive }}"
-        checksum: "sha256:{{ crawler_go_archive_metadata.sha256 }}"
+        checksum: "sha256:{{ telegrambot_go_archive_metadata.sha256 }}"
         owner: root
         group: root
         mode: "0644"
-      when: not crawler_go_binary.stat.exists
+      when: not telegrambot_go_binary.stat.exists
 
     - name: Install the requested Go release
       ansible.builtin.unarchive:
@@ -116,117 +116,117 @@
         remote_src: true
         extra_opts: [--strip-components=1]
         creates: "{{ go_install_dir }}/bin/go"
-      when: not crawler_go_binary.stat.exists and not ansible_check_mode
+      when: not telegrambot_go_binary.stat.exists and not ansible_check_mode
 
-    - name: Ensure crawler directory exists
+    - name: Ensure telegrambot directory exists
       ansible.builtin.file:
-        path: "{{ crawler_dir }}"
+        path: "{{ telegrambot_dir }}"
         state: directory
         owner: "{{ lxc_ssh_user }}"
         group: "{{ lxc_ssh_user }}"
         mode: "0755"
 
-    - name: Ensure the crawler binary directory exists
+    - name: Ensure the telegrambot binary directory exists
       ansible.builtin.file:
-        path: "{{ crawler_binary | dirname }}"
+        path: "{{ telegrambot_binary | dirname }}"
         state: directory
         mode: "0755"
 
-    - name: Check out the declared crawler revision
+    - name: Check out the declared telegrambot revision
       ansible.builtin.git:
-        repo: "{{ crawler_repo }}"
-        dest: "{{ crawler_dir }}"
-        version: "{{ crawler_version }}"
+        repo: "{{ telegrambot_repo }}"
+        dest: "{{ telegrambot_dir }}"
+        version: "{{ telegrambot_version }}"
         update: true
         force: true
-      register: crawler_checkout
+      register: telegrambot_checkout
 
-    - name: Check the crawler module definition
+    - name: Check the telegrambot module definition
       ansible.builtin.stat:
-        path: "{{ crawler_dir }}/go.mod"
-      register: crawler_go_mod
+        path: "{{ telegrambot_dir }}/go.mod"
+      register: telegrambot_go_mod
 
-    - name: Read the crawler module definition
+    - name: Read the telegrambot module definition
       ansible.builtin.slurp:
-        src: "{{ crawler_dir }}/go.mod"
-      register: crawler_module
-      when: crawler_go_mod.stat.exists
+        src: "{{ telegrambot_dir }}/go.mod"
+      register: telegrambot_module
+      when: telegrambot_go_mod.stat.exists
 
-    - name: Determine the minimum Go version required by the crawler
+    - name: Determine the minimum Go version required by the telegrambot
       ansible.builtin.set_fact:
-        crawler_required_go_version: >-
-          {{ ((crawler_module.content | default('') | b64decode)
+        telegrambot_required_go_version: >-
+          {{ ((telegrambot_module.content | default('') | b64decode)
              | regex_findall('(?m)^go[ \t]+([0-9]+\.[0-9]+(?:\.[0-9]+)?)')
              | first | default('1.0')) }}
 
-    - name: Validate the configured Go version against the crawler module
+    - name: Validate the configured Go version against the telegrambot module
       ansible.builtin.assert:
         that:
-          - go_version is version(crawler_required_go_version, '>=')
+          - go_version is version(telegrambot_required_go_version, '>=')
         fail_msg: >-
-          Crawler requires Go {{ crawler_required_go_version }} or newer,
+          Telegram bot requires Go {{ telegrambot_required_go_version }} or newer,
           but GO_VERSION selects {{ go_version }}. Update GO_VERSION in .env
           or your exported environment.
 
-    - name: Check the crawler executable
+    - name: Check the telegrambot executable
       ansible.builtin.stat:
-        path: "{{ crawler_binary }}"
-      register: crawler_installed_binary
+        path: "{{ telegrambot_binary }}"
+      register: telegrambot_installed_binary
 
     - name: Check the last successful build state
       ansible.builtin.stat:
-        path: "{{ crawler_build_state_file }}"
-      register: crawler_build_state
+        path: "{{ telegrambot_build_state_file }}"
+      register: telegrambot_build_state
 
     - name: Read the last successful build state
       ansible.builtin.slurp:
-        src: "{{ crawler_build_state_file }}"
-      register: crawler_previous_build
-      when: crawler_build_state.stat.exists
+        src: "{{ telegrambot_build_state_file }}"
+      register: telegrambot_previous_build
+      when: telegrambot_build_state.stat.exists
 
     - name: Determine the desired build state
       ansible.builtin.set_fact:
-        crawler_build_signature: "{{ crawler_checkout.after }}:{{ go_install_dir }}:{{ go_arch }}:{{ crawler_binary }}"
+        telegrambot_build_signature: "{{ telegrambot_checkout.after }}:{{ go_install_dir }}:{{ go_arch }}:{{ telegrambot_binary }}"
 
-    - name: Build crawler when its source or toolchain changes or the binary is missing
+    - name: Build telegrambot when its source or toolchain changes or the binary is missing
       ansible.builtin.command:
         argv:
           - "{{ go_install_dir }}/bin/go"
           - build
           - -o
-          - "{{ crawler_binary }}"
+          - "{{ telegrambot_binary }}"
           - main.go
-        chdir: "{{ crawler_dir }}"
+        chdir: "{{ telegrambot_dir }}"
       environment:
         GOTOOLCHAIN: local
         PATH: "{{ go_install_dir }}/bin:{{ ansible_facts['env']['PATH'] }}"
       when: >-
-        not crawler_installed_binary.stat.exists or
-        (crawler_previous_build.content | default('') | b64decode) != crawler_build_signature
-      register: crawler_build
+        not telegrambot_installed_binary.stat.exists or
+        (telegrambot_previous_build.content | default('') | b64decode) != telegrambot_build_signature
+      register: telegrambot_build
       changed_when: true
-      notify: Restart crawler
+      notify: Restart telegrambot
 
     - name: Record the successful build state
       ansible.builtin.copy:
-        dest: "{{ crawler_build_state_file }}"
-        content: "{{ crawler_build_signature }}"
+        dest: "{{ telegrambot_build_state_file }}"
+        content: "{{ telegrambot_build_signature }}"
         owner: root
         group: root
         mode: "0644"
-      when: crawler_build is changed and not ansible_check_mode
+      when: telegrambot_build is changed and not ansible_check_mode
 
-    - name: Ensure the crawler binary is executable
+    - name: Ensure the telegrambot binary is executable
       ansible.builtin.file:
-        path: "{{ crawler_binary }}"
+        path: "{{ telegrambot_binary }}"
         owner: root
         group: root
         mode: "0755"
-      when: crawler_installed_binary.stat.exists or not ansible_check_mode
+      when: telegrambot_installed_binary.stat.exists or not ansible_check_mode
 
-    - name: Deploy crawler environment
+    - name: Deploy telegrambot environment
       ansible.builtin.copy:
-        dest: "{{ crawler_env_file }}"
+        dest: "{{ telegrambot_env_file }}"
         content: |
           TELEGRAM_BOT_TOKEN={{ telegram_bot_token }}
         owner: root
@@ -234,25 +234,35 @@
         mode: "0600"
       no_log: true
       diff: false
-      notify: Restart crawler
+      notify: Restart telegrambot
 
-    - name: Deploy crawler systemd service
+    - name: Deploy telegrambot systemd service
       ansible.builtin.template:
-        src: templates/crawler.service.j2
-        dest: /etc/systemd/system/crawler.service
+        src: templates/telegrambot.service.j2
+        dest: /etc/systemd/system/telegrambot.service
         owner: root
         group: root
         mode: "0644"
       notify:
         - Reload systemd
-        - Restart crawler
+        - Restart telegrambot
+
+    - name: Gather services to detect the previous crawler unit
+      ansible.builtin.service_facts:
+
+    - name: Stop and disable the previous crawler service
+      ansible.builtin.systemd_service:
+        name: crawler
+        state: stopped
+        enabled: false
+      when: "'crawler.service' in ansible_facts.services"
 
     - name: Apply service changes
       ansible.builtin.meta: flush_handlers
 
-    - name: Ensure crawler is enabled and running
+    - name: Ensure telegrambot is enabled and running
       ansible.builtin.systemd_service:
-        name: crawler
+        name: telegrambot
         state: started
         enabled: true
 
@@ -261,7 +271,7 @@
       ansible.builtin.systemd_service:
         daemon_reload: true
 
-    - name: Restart crawler
+    - name: Restart telegrambot
       ansible.builtin.systemd_service:
-        name: crawler
+        name: telegrambot
         state: restarted
