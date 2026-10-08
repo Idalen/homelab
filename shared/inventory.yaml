@@ -1,0 +1,7 @@
+"all":
+  "children":
+    "ladder":
+      "hosts":
+        "ladder-lxc":
+          "ansible_host": "192.168.0.5"
+          "ansible_user": "root"

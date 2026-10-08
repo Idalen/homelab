@@ -1,0 +1,80 @@
+---
+- name: Install and configure Ladder
+  hosts: ladder
+  become: true
+
+  vars:
+    ladder_dir: /srv/ladder
+    docker_arch: amd64
+
+  tasks:
+    - name: Install repository prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - python3-debian
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Remove legacy Docker APT repository
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/download_docker_com_linux_ubuntu.list
+        state: absent
+
+    - name: Configure Docker APT repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types:
+          - deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites:
+          - "{{ ansible_distribution_release }}"
+        components:
+          - stable
+        architectures:
+          - "{{ docker_arch }}"
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+        enabled: true
+      register: docker_repository
+
+    - name: Install Docker Engine
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: "{{ docker_repository.changed }}"
+        cache_valid_time: 3600
+
+    - name: Ensure Docker is running
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create Ladder directory
+      ansible.builtin.file:
+        path: "{{ ladder_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Deploy Ladder configuration
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ ladder_dir }}/{{ item | basename }}"
+        mode: "0644"
+      loop:
+        - ../config/docker-compose.yml
+        - ../config/rules.yaml
+
+    - name: Ensure Ladder are running
+      community.docker.docker_compose_v2:
+        project_src: "{{ ladder_dir }}"
+        state: present
+        pull: missing
+        recreate: auto
+        remove_orphans: true

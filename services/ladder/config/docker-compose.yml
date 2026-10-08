@@ -9,9 +9,3 @@ services:
     volumes:
       - /srv/ladder/rules.yaml:/rules/rules.yaml
     restart: always
-
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    environment:
-      - LOG_LEVEL=info
-    restart: always

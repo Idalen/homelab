@@ -50,7 +50,7 @@ module "lxc" {
 
   dns_servers = ["192.168.0.2", "1.1.1.1"]
 
-  memory_dedicated = 2048
+  memory_dedicated = 256
   disk_size        = 16
   enable_nesting   = true
   enable_tun_device = true
