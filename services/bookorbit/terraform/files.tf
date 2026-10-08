@@ -1,12 +1,12 @@
 resource "local_file" "ansible_inventory" {
-  filename = "${path.module}/../../../shared/inventory/ladder.yml"
+  filename = "${path.module}/../../../shared/inventory/bookorbit.yaml"
 
   content = yamlencode({
     all = {
       children = {
-        ladder = {
+        bookorbit = {
           hosts = {
-            ladder-lxc = {
+            bookorbit-lxc = {
               ansible_host = module.lxc.ip_address
               ansible_user = "root"
             }

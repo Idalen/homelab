@@ -1,0 +1,7 @@
+"all":
+  "children":
+    "bookorbit":
+      "hosts":
+        "bookorbit-lxc":
+          "ansible_host": "192.168.0.7"
+          "ansible_user": "root"

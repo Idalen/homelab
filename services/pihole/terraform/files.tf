@@ -1,12 +1,12 @@
 resource "local_file" "ansible_inventory" {
-  filename = "${path.module}/../../../shared/inventory/ladder.yml"
+  filename = "${path.module}/../../../shared/inventory/pihole.yaml"
 
   content = yamlencode({
     all = {
       children = {
-        ladder = {
+        pihole = {
           hosts = {
-            ladder-lxc = {
+            pihole-lxc = {
               ansible_host = module.lxc.ip_address
               ansible_user = "root"
             }
