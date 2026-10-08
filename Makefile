@@ -25,32 +25,13 @@ debug: DEBUG=1
 debug: $(word 2,$(MAKECMDGOALS))
 
 pihole:
-	tofu -chdir=./services/pihole/terraform init -upgrade
-	tofu -chdir=./services/pihole/terraform destroy -auto-approve
 	tofu -chdir=./services/pihole/terraform apply -auto-approve
-	LXC_IP=$$(tofu -chdir=./services/pihole/terraform output -raw lxc_ip); \
-	echo "LXC IP: $$LXC_IP"; \
-	ssh-keygen -R "$$LXC_IP"; \
-	ansible localhost $(ANSIBLE_VERBOSE) -m wait_for -a "host=$$LXC_IP port=22 delay=2 timeout=300"; \
-	set -a; \
-	. ./.env; \
-	set +a; \
-	ansible-playbook $(ANSIBLE_VERBOSE) \
-		-i "$$LXC_IP," \
-		-u root \
-		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
-		./services/pihole/ansible/pihole.yml; \
-	ansible-playbook $(ANSIBLE_VERBOSE) \
-		-i "$$LXC_IP," \
-		-u root \
-		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
-		-e "tailscale_args=--accept-routes --accept-dns=false" \
-		./shared/ansible/tailscale.yml
+	ansible-playbook ./services/pihole/ansible/main.yml
 
 
 nginx:
 	tofu -chdir=./services/nginx/terraform apply -auto-approve
-	ansible-playbook ./services/nginx/ansible/nginx.yml
+	ansible-playbook ./services/nginx/ansible/main.yml
 
 crawler:
 	@if [ ! -f .env ]; then \

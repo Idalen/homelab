@@ -1,0 +1,298 @@
+---
+- name: Install and configure Pi-hole
+  hosts: pihole
+  become: true
+  gather_facts: false
+
+  pre_tasks:
+    - name: Wait for the Pi-hole host to accept connections
+      ansible.builtin.wait_for_connection:
+        delay: 2
+        timeout: 300
+      when: not ansible_check_mode
+
+    - name: Gather host facts
+      ansible.builtin.setup:
+
+
+  vars:
+    pihole_api_url: "http://127.0.0.1/api"
+    pihole_api_password: "{{ lookup('env', 'PIHOLE_API_PASSWORD') }}"
+
+    pihole_interface: eth0
+    pihole_dns_1: "1.1.1.1"
+    pihole_dns_2: "1.0.0.1"
+
+    pihole_adlists:
+      - url: https://big.oisd.nl
+        comment: oisd
+      - url: https://media.githubusercontent.com/media/zachlagden/Pi-hole-Optimized-Blocklists/main/lists/nsfw.txt
+        comment: nsfw
+
+    pihole_dhcp_active: true
+    pihole_dhcp_start: "192.168.0.50"
+    pihole_dhcp_end: "192.168.0.250"
+    pihole_dhcp_router: "192.168.0.1"
+    pihole_dhcp_netmask: "255.255.255.0"
+    pihole_dhcp_lease_time: "24h"
+    pihole_dhcp_ipv6: false
+    pihole_dhcp_rapid_commit: false
+    pihole_dhcp_multi_dns: false
+    pihole_dhcp_logging: false
+    pihole_dhcp_ignore_unknown_clients: false
+
+    pihole_domain_name: "lan"
+    pihole_listening_mode: "ALL"
+    pihole_query_logging: true
+    pihole_cache_size: 10000
+    pihole_blocking_mode: "NULL"
+    pihole_edns: "TEXT"
+    pihole_domain_needed: true
+    pihole_expand_hosts: true
+    pihole_domain_local: true
+
+    # Only these settings are managed; Pi-hole retains defaults and credentials.
+    pihole_config:
+      misc:
+        etc_dnsmasq_d: true
+      dns:
+        upstreams: ["{{ pihole_dns_1 }}", "{{ pihole_dns_2 }}"]
+        interface: "{{ pihole_interface }}"
+        # Clear legacy individual records so wildcard rules are authoritative.
+        hosts: []
+        domainNeeded: "{{ pihole_domain_needed | bool }}"
+        expandHosts: "{{ pihole_expand_hosts | bool }}"
+        listeningMode: "{{ pihole_listening_mode }}"
+        queryLogging: "{{ pihole_query_logging | bool }}"
+        domain:
+          name: "{{ pihole_domain_name }}"
+          local: "{{ pihole_domain_local | bool }}"
+        cache:
+          size: "{{ pihole_cache_size | int }}"
+        blocking:
+          mode: "{{ pihole_blocking_mode }}"
+          edns: "{{ pihole_edns }}"
+      dhcp:
+        active: "{{ pihole_dhcp_active | bool }}"
+        start: "{{ pihole_dhcp_start }}"
+        end: "{{ pihole_dhcp_end }}"
+        router: "{{ pihole_dhcp_router }}"
+        netmask: "{{ pihole_dhcp_netmask }}"
+        leaseTime: "{{ pihole_dhcp_lease_time }}"
+        ipv6: "{{ pihole_dhcp_ipv6 | bool }}"
+        rapidCommit: "{{ pihole_dhcp_rapid_commit | bool }}"
+        multiDNS: "{{ pihole_dhcp_multi_dns | bool }}"
+        logging: "{{ pihole_dhcp_logging | bool }}"
+        ignoreUnknownClients: "{{ pihole_dhcp_ignore_unknown_clients | bool }}"
+        hosts: "{{ pihole_dhcp_hosts | default([]) }}"
+
+  tasks:
+    - name: Validate unique blocklist URLs
+      ansible.builtin.assert:
+        that:
+          - pihole_adlists | map(attribute='url') | unique | length == pihole_adlists | length
+        fail_msg: Use unique blocklist URLs.
+
+    # --------------------
+    # Installation
+    # --------------------
+
+    - name: Install prerequisites
+      ansible.builtin.apt:
+        name:
+          - curl
+          - ca-certificates
+          - python3
+          - sudo
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Check Pi-hole installation
+      ansible.builtin.stat:
+        path: /usr/local/bin/pihole
+      register: pihole_installed
+
+    - name: Download Pi-hole installer
+      ansible.builtin.get_url:
+        url: https://install.pi-hole.net
+        dest: /tmp/pihole-install.sh
+        mode: "0755"
+      when: not pihole_installed.stat.exists
+
+    - name: Install Pi-hole if missing
+      ansible.builtin.command:
+        argv:
+          - /bin/bash
+          - /tmp/pihole-install.sh
+          - --unattended
+        creates: /usr/local/bin/pihole
+      register: pihole_install
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      when: not pihole_installed.stat.exists
+
+    - name: Set initial admin password (empty means passwordless)
+      ansible.builtin.command:
+        argv: [pihole, setpassword, "{{ pihole_api_password }}"]
+      when: pihole_install is changed and not ansible_check_mode
+      no_log: true
+
+    - name: Ensure Pi-hole FTL is running
+      ansible.builtin.systemd_service:
+        name: pihole-FTL
+        state: started
+        enabled: true
+      when: pihole_installed.stat.exists or not ansible_check_mode
+
+    - name: Ensure the dnsmasq configuration directory exists
+      ansible.builtin.file:
+        path: /etc/dnsmasq.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when: pihole_installed.stat.exists or not ansible_check_mode
+      tags: [config]
+
+    - name: Deploy wildcard DNS configuration
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../config/99-wildcards.conf"
+        dest: /etc/dnsmasq.d/99-wildcards.conf
+        owner: root
+        group: root
+        mode: "0644"
+      when: pihole_installed.stat.exists or not ansible_check_mode
+      notify: Restart Pi-hole
+      tags: [config]
+
+    - name: Reconcile Pi-hole configuration and blocklists
+      when: pihole_installed.stat.exists or not ansible_check_mode
+      tags: [config]
+      block:
+        - name: Authenticate with Pi-hole API
+          ansible.builtin.uri:
+            url: "{{ pihole_api_url }}/auth"
+            method: POST
+            body_format: json
+            body:
+              password: "{{ pihole_api_password }}"
+            status_code: 200
+          register: pihole_auth
+          changed_when: false
+          check_mode: false
+          no_log: true
+          retries: 10
+          delay: 2
+          until: pihole_auth.status == 200
+
+        - name: Manage authenticated API session
+          no_log: true
+          block:
+            - name: Verify API authentication
+              ansible.builtin.assert:
+                that:
+                  - pihole_auth.json.session.valid | bool
+
+            - name: Use a session header only when authentication created a session
+              ansible.builtin.set_fact:
+                pihole_api_headers: >-
+                  {{ {'X-FTL-SID': pihole_auth.json.session.sid}
+                     if pihole_auth.json.session.sid | default('', true) | length > 0
+                     else {} }}
+
+            - name: Read current configuration
+              ansible.builtin.uri:
+                url: "{{ pihole_api_url }}/config"
+                headers: "{{ pihole_api_headers }}"
+              register: pihole_current_config
+              changed_when: false
+              check_mode: false
+
+            - name: Determine configuration drift
+              ansible.builtin.set_fact:
+                pihole_config_changed: >-
+                  {{ pihole_current_config.json.config !=
+                     (pihole_current_config.json.config | combine(pihole_config, recursive=true)) }}
+
+            - name: Report configuration changes in check mode
+              ansible.builtin.debug:
+                msg: Managed Pi-hole settings would change.
+              when: ansible_check_mode and pihole_config_changed
+              changed_when: true
+
+            - name: Apply managed configuration without restarting the API session
+              ansible.builtin.uri:
+                url: "{{ pihole_api_url }}/config?restart=false"
+                method: PATCH
+                headers: "{{ pihole_api_headers }}"
+                body_format: json
+                body:
+                  config: "{{ pihole_config }}"
+              when: pihole_config_changed and not ansible_check_mode
+              changed_when: true
+              notify: Restart Pi-hole
+
+            - name: Read existing blocklists
+              ansible.builtin.uri:
+                url: "{{ pihole_api_url }}/lists?type=block"
+                headers: "{{ pihole_api_headers }}"
+              register: pihole_existing_lists
+              changed_when: false
+              check_mode: false
+
+            - name: Reconcile each declared blocklist
+              ansible.builtin.include_tasks: tasks/adlist.yml
+              loop: "{{ pihole_adlists }}"
+              loop_control:
+                loop_var: pihole_adlist
+                label: "{{ pihole_adlist.url }}"
+
+            - name: Report obsolete blocklists in check mode
+              ansible.builtin.debug:
+                msg: "Would remove {{ item.address }}"
+              loop: "{{ pihole_existing_lists.json.lists }}"
+              when:
+                - ansible_check_mode
+                - item.address not in (pihole_adlists | map(attribute='url') | list)
+              changed_when: true
+
+            - name: Remove undeclared blocklists
+              ansible.builtin.uri:
+                url: "{{ pihole_api_url }}/lists/{{ item.address | urlencode | replace('/', '%2F') }}?type=block"
+                method: DELETE
+                headers: "{{ pihole_api_headers }}"
+                status_code: 204
+              loop: "{{ pihole_existing_lists.json.lists }}"
+              when:
+                - not ansible_check_mode
+                - item.address not in (pihole_adlists | map(attribute='url') | list)
+              changed_when: true
+              notify: Update gravity
+
+          always:
+            - name: Close Pi-hole API session
+              ansible.builtin.uri:
+                url: "{{ pihole_api_url }}/auth"
+                method: DELETE
+                headers: "{{ pihole_api_headers }}"
+                status_code: 204
+              changed_when: false
+              check_mode: false
+              when: pihole_auth.json.session.sid | default('', true) | length > 0
+
+    - name: Report pending installation in check mode
+      ansible.builtin.debug:
+        msg: Configuration and blocklists will be reconciled after Pi-hole is installed.
+      when: ansible_check_mode and not pihole_installed.stat.exists
+
+  handlers:
+    - name: Restart Pi-hole
+      ansible.builtin.systemd_service:
+        name: pihole-FTL
+        state: restarted
+
+    - name: Update gravity
+      ansible.builtin.command:
+        argv: [pihole, -g]
+      changed_when: true
