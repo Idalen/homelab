@@ -7,8 +7,8 @@ Wants=network-online.target
 Type=simple
 User={{ lxc_ssh_user }}
 WorkingDirectory={{ crawler_dir }}
-EnvironmentFile=/etc/crawler.env
-ExecStart=/usr/local/bin/go run main.go
+EnvironmentFile={{ crawler_env_file }}
+ExecStart={{ crawler_binary }}
 Restart=always
 RestartSec=5
 

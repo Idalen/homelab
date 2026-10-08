@@ -14,6 +14,8 @@
     - name: Gather host facts
       ansible.builtin.setup:
 
+  roles:
+    - tailscale
 
   vars:
     pihole_api_url: "http://127.0.0.1/api"

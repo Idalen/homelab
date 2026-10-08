@@ -1,9 +1,18 @@
 ---
 - name: Install and configure BookOrbit
-  hosts: all
-  become: yes
-  collections:
-    - community.general
+  hosts: bookorbit
+  become: true
+  gather_facts: false
+
+  pre_tasks:
+    - name: Wait for the BookOrbit host to accept connections
+      ansible.builtin.wait_for_connection:
+        delay: 2
+        timeout: 300
+      when: not ansible_check_mode
+
+    - name: Gather host facts
+      ansible.builtin.setup:
 
   vars:
     bookorbit_config_src: "{{ playbook_dir }}/../config"
@@ -11,114 +20,146 @@
     bookorbit_books_dir: "{{ bookorbit_dir }}/books"
     bookorbit_data_dir: "{{ bookorbit_dir }}/data"
     bookorbit_postgres_dir: "{{ bookorbit_dir }}/postgres-data"
+    bookorbit_app_url: "http://{{ ansible_host }}:3000"
+    bookorbit_postgres_user: bookorbit
+    bookorbit_postgres_db: bookorbit
+    bookorbit_uid: 1000
+    bookorbit_gid: 1000
+    bookorbit_log_level: info
+    docker_arch: amd64
+    bookorbit_secret_lengths:
+      POSTGRES_PASSWORD: 48
+      JWT_SECRET: 64
+      SETUP_BOOTSTRAP_TOKEN: 32
 
   tasks:
-    - name: Disable systemd-resolved if enabled
-      shell: systemctl disable --now systemd-resolved
-      register: resolved_disable
-      failed_when: false
-      changed_when: resolved_disable.rc == 0
-
-    - name: Set resolv.conf for installer
-      copy:
-        dest: /etc/resolv.conf
-        content: |
-          nameserver 1.1.1.1
-          nameserver 1.0.0.1
-        mode: '0644'
-
-    - name: Update apt cache
-      apt:
-        update_cache: yes
-
-    - name: Install Docker dependencies
-      apt:
+    - name: Install repository prerequisites
+      ansible.builtin.apt:
         name:
           - ca-certificates
-          - curl
-          - gnupg
+          - python3-debian
         state: present
+        update_cache: true
+        cache_valid_time: 3600
 
-    - name: Add Docker GPG key
-      apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
+    - name: Remove legacy Docker APT repository
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/download_docker_com_linux_ubuntu.list
+        state: absent
 
-    - name: Add Docker APT repository
-      apt_repository:
-        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    - name: Configure Docker APT repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: https://download.docker.com/linux/ubuntu
+        suites: ["{{ ansible_distribution_release }}"]
+        components: [stable]
+        architectures: ["{{ docker_arch }}"]
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
         state: present
+        enabled: true
+      register: docker_repository
 
     - name: Install Docker Engine
-      apt:
+      ansible.builtin.apt:
         name:
           - docker-ce
           - docker-ce-cli
           - containerd.io
           - docker-compose-plugin
         state: present
-        update_cache: yes
+        update_cache: "{{ docker_repository.changed }}"
+        cache_valid_time: 3600
 
-    - name: Start Docker
-      systemd:
+    - name: Ensure Docker is running
+      ansible.builtin.systemd_service:
         name: docker
         state: started
         enabled: true
 
-    - name: Create BookOrbit directories
-      file:
+    - name: Create BookOrbit project directory
+      ansible.builtin.file:
+        path: "{{ bookorbit_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create BookOrbit application directories
+      ansible.builtin.file:
         path: "{{ item }}"
         state: directory
-        mode: '0755'
-        owner: "1000"
-        group: "1000"
+        mode: "0755"
+        owner: "{{ bookorbit_uid }}"
+        group: "{{ bookorbit_gid }}"
       loop:
         - "{{ bookorbit_books_dir }}"
         - "{{ bookorbit_data_dir }}"
-        - "{{ bookorbit_postgres_dir }}"
 
-    - name: Deploy docker-compose.yml
-      copy:
+    - name: Ensure the Postgres data directory exists
+      ansible.builtin.file:
+        path: "{{ bookorbit_postgres_dir }}"
+        state: directory
+      # Postgres manages its own data directory permissions and ownership.
+
+    - name: Deploy Docker Compose configuration
+      ansible.builtin.copy:
         src: "{{ bookorbit_config_src }}/docker-compose.yml"
         dest: "{{ bookorbit_dir }}/docker-compose.yml"
-        mode: '0644'
+        owner: root
+        group: root
+        mode: "0644"
 
-    - name: Generate Postgres password
-      shell: openssl rand -hex 24
-      register: pg_password
-      changed_when: false
+    - name: Check for existing BookOrbit environment
+      ansible.builtin.stat:
+        path: "{{ bookorbit_dir }}/.env"
+      register: bookorbit_env_file
 
-    - name: Generate JWT secret
-      shell: openssl rand -hex 32
-      register: jwt_secret
-      changed_when: false
+    - name: Read existing BookOrbit environment
+      ansible.builtin.slurp:
+        src: "{{ bookorbit_dir }}/.env"
+      register: bookorbit_existing_env
+      when: bookorbit_env_file.stat.exists
+      no_log: true
 
-    - name: Generate bootstrap token
-      shell: openssl rand -hex 16
-      register: bootstrap_token
-      changed_when: false
+    - name: Preserve existing BookOrbit secrets
+      ansible.builtin.set_fact:
+        bookorbit_secrets: >-
+          {{ dict((bookorbit_existing_env.content | default('') | b64decode)
+             | regex_findall('(?m)^(POSTGRES_PASSWORD|JWT_SECRET|SETUP_BOOTSTRAP_TOKEN)=(.*)$')) }}
+      no_log: true
 
-    - name: Create BookOrbit .env file
-      copy:
+    - name: Generate only missing BookOrbit secrets
+      ansible.builtin.set_fact:
+        bookorbit_secrets: >-
+          {{ bookorbit_secrets | combine({item.key:
+             lookup('ansible.builtin.password', '/dev/null',
+                    length=item.value, chars=['0123456789abcdef'])}) }}
+      loop: "{{ bookorbit_secret_lengths | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      when: bookorbit_secrets.get(item.key, '') | length == 0
+      no_log: true
+
+    - name: Deploy BookOrbit environment
+      ansible.builtin.template:
+        src: templates/bookorbit.env.j2
         dest: "{{ bookorbit_dir }}/.env"
-        content: |
-          APP_URL=http://192.168.0.7:3000
-          POSTGRES_PASSWORD={{ pg_password.stdout }}
-          POSTGRES_USER=bookorbit
-          POSTGRES_DB=bookorbit
-          JWT_SECRET={{ jwt_secret.stdout }}
-          SETUP_BOOTSTRAP_TOKEN={{ bootstrap_token.stdout }}
-          PUID=1000
-          PGID=1000
-          LOG_LEVEL=info
-        mode: '0600'
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      diff: false
 
-    - name: Pull and start BookOrbit stack
-      command: docker compose -f {{ bookorbit_dir }}/docker-compose.yml up -d
-      args:
-        chdir: "{{ bookorbit_dir }}"
-      changed_when: false
+    - name: Ensure BookOrbit services are running
+      community.docker.docker_compose_v2:
+        project_src: "{{ bookorbit_dir }}"
+        state: present
+        pull: missing
+        recreate: auto
+        remove_orphans: true
+      no_log: true
 
-    - name: Save bootstrap token for display
-      debug:
-        msg: "BookOrbit setup bootstrap token: {{ bootstrap_token.stdout }}"
+    - name: Show where to retrieve the bootstrap token
+      ansible.builtin.debug:
+        msg: "The setup bootstrap token is stored in {{ bookorbit_dir }}/.env (SETUP_BOOTSTRAP_TOKEN)."

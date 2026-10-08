@@ -1,5 +1,5 @@
 resource "local_file" "ansible_inventory" {
-  filename = "${path.module}/../../../shared/inventory/bookorbit.yml"
+  filename = "${path.module}/../../../shared/inventory/bookorbit.yaml"
 
   content = yamlencode({
     all = {

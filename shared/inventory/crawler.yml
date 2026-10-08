@@ -1,0 +1,7 @@
+"all":
+  "children":
+    "crawler":
+      "hosts":
+        "crawler-lxc":
+          "ansible_host": "192.168.0.21"
+          "ansible_user": "root"

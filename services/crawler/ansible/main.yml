@@ -1,0 +1,267 @@
+---
+- name: Install and configure Crawler Telegram Bot
+  hosts: crawler
+  become: true
+  gather_facts: false
+
+  pre_tasks:
+    - name: Wait for the crawler host to accept connections
+      ansible.builtin.wait_for_connection:
+        delay: 2
+        timeout: 300
+      when: not ansible_check_mode
+
+    - name: Gather host facts
+      ansible.builtin.setup:
+
+  vars:
+    # Read plain or quoted .env values without executing shell code.
+    crawler_dotenv: >-
+      {{ dict((lookup('ansible.builtin.file', playbook_dir ~ '/../../../.env', errors='ignore')
+         | default('', true))
+         | regex_findall('(?m)^(?:export[ \t]+)?(TELEGRAM_BOT_TOKEN|LXC_SSH_USER|GO_VERSION)[ \t]*=[ \t]*([^\r\n]*)$')) }}
+    telegram_bot_token: >-
+      {{ lookup('env', 'TELEGRAM_BOT_TOKEN')
+         | default(crawler_dotenv.get('TELEGRAM_BOT_TOKEN', '') | trim | trim("'\""), true) }}
+    lxc_ssh_user: >-
+      {{ lookup('env', 'LXC_SSH_USER')
+         | default(crawler_dotenv.get('LXC_SSH_USER', '') | trim | trim("'\""), true)
+         | default('root', true) }}
+    go_version: >-
+      {{ lookup('env', 'GO_VERSION')
+         | default(crawler_dotenv.get('GO_VERSION', '') | trim | trim("'\""), true)
+         | default('1.25.5', true) }}
+    go_arch: amd64
+    go_install_dir: "/opt/go/{{ go_version }}"
+    go_archive: "/var/cache/go{{ go_version }}.linux-{{ go_arch }}.tar.gz"
+    crawler_repo: "https://github.com/Idalen/telegrambot.git"
+    crawler_version: HEAD
+    home_dir: "{{ '/root' if lxc_ssh_user == 'root' else '/home/' + lxc_ssh_user }}"
+    crawler_dir: "{{ home_dir }}/crawler"
+    crawler_binary: /usr/local/bin/crawler
+    crawler_env_file: /etc/crawler.env
+    crawler_build_state_file: "{{ crawler_binary }}.build-state"
+
+  tasks:
+    - name: Validate Telegram bot token
+      ansible.builtin.assert:
+        that:
+          - telegram_bot_token | length > 0
+          - "'\n' not in telegram_bot_token"
+          - "'\r' not in telegram_bot_token"
+        fail_msg: Set TELEGRAM_BOT_TOKEN before deploying the crawler.
+      no_log: true
+
+    - name: Install dependencies
+      ansible.builtin.apt:
+        name: [git, ca-certificates, tar]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Create versioned Go directory
+      ansible.builtin.file:
+        path: "{{ go_install_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Check the requested Go installation
+      ansible.builtin.stat:
+        path: "{{ go_install_dir }}/bin/go"
+      register: crawler_go_binary
+
+    - name: Read official Go release checksums
+      ansible.builtin.uri:
+        url: "https://go.dev/dl/?mode=json&include=all"
+        return_content: true
+      register: crawler_go_releases
+      changed_when: false
+      check_mode: false
+      when: not crawler_go_binary.stat.exists
+
+    - name: Select the requested Go archive metadata
+      ansible.builtin.set_fact:
+        crawler_go_archive_metadata: >-
+          {{ ((crawler_go_releases.json
+               | selectattr('version', 'equalto', 'go' ~ go_version)
+               | first | default({})).get('files', [])
+               | selectattr('filename', 'equalto',
+                            'go' ~ go_version ~ '.linux-' ~ go_arch ~ '.tar.gz')
+               | first | default({})) }}
+      when: not crawler_go_binary.stat.exists
+
+    - name: Validate the requested Go release checksum
+      ansible.builtin.assert:
+        that:
+          - crawler_go_archive_metadata.get('sha256', '') is match('^[0-9a-f]{64}$')
+        fail_msg: "No official Linux {{ go_arch }} archive found for Go {{ go_version }}."
+      when: not crawler_go_binary.stat.exists
+
+    - name: Download the requested Go release
+      ansible.builtin.get_url:
+        url: "https://go.dev/dl/go{{ go_version }}.linux-{{ go_arch }}.tar.gz"
+        dest: "{{ go_archive }}"
+        checksum: "sha256:{{ crawler_go_archive_metadata.sha256 }}"
+        owner: root
+        group: root
+        mode: "0644"
+      when: not crawler_go_binary.stat.exists
+
+    - name: Install the requested Go release
+      ansible.builtin.unarchive:
+        src: "{{ go_archive }}"
+        dest: "{{ go_install_dir }}"
+        remote_src: true
+        extra_opts: [--strip-components=1]
+        creates: "{{ go_install_dir }}/bin/go"
+      when: not crawler_go_binary.stat.exists and not ansible_check_mode
+
+    - name: Ensure crawler directory exists
+      ansible.builtin.file:
+        path: "{{ crawler_dir }}"
+        state: directory
+        owner: "{{ lxc_ssh_user }}"
+        group: "{{ lxc_ssh_user }}"
+        mode: "0755"
+
+    - name: Ensure the crawler binary directory exists
+      ansible.builtin.file:
+        path: "{{ crawler_binary | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: Check out the declared crawler revision
+      ansible.builtin.git:
+        repo: "{{ crawler_repo }}"
+        dest: "{{ crawler_dir }}"
+        version: "{{ crawler_version }}"
+        update: true
+        force: true
+      register: crawler_checkout
+
+    - name: Check the crawler module definition
+      ansible.builtin.stat:
+        path: "{{ crawler_dir }}/go.mod"
+      register: crawler_go_mod
+
+    - name: Read the crawler module definition
+      ansible.builtin.slurp:
+        src: "{{ crawler_dir }}/go.mod"
+      register: crawler_module
+      when: crawler_go_mod.stat.exists
+
+    - name: Determine the minimum Go version required by the crawler
+      ansible.builtin.set_fact:
+        crawler_required_go_version: >-
+          {{ ((crawler_module.content | default('') | b64decode)
+             | regex_findall('(?m)^go[ \t]+([0-9]+\.[0-9]+(?:\.[0-9]+)?)')
+             | first | default('1.0')) }}
+
+    - name: Validate the configured Go version against the crawler module
+      ansible.builtin.assert:
+        that:
+          - go_version is version(crawler_required_go_version, '>=')
+        fail_msg: >-
+          Crawler requires Go {{ crawler_required_go_version }} or newer,
+          but GO_VERSION selects {{ go_version }}. Update GO_VERSION in .env
+          or your exported environment.
+
+    - name: Check the crawler executable
+      ansible.builtin.stat:
+        path: "{{ crawler_binary }}"
+      register: crawler_installed_binary
+
+    - name: Check the last successful build state
+      ansible.builtin.stat:
+        path: "{{ crawler_build_state_file }}"
+      register: crawler_build_state
+
+    - name: Read the last successful build state
+      ansible.builtin.slurp:
+        src: "{{ crawler_build_state_file }}"
+      register: crawler_previous_build
+      when: crawler_build_state.stat.exists
+
+    - name: Determine the desired build state
+      ansible.builtin.set_fact:
+        crawler_build_signature: "{{ crawler_checkout.after }}:{{ go_install_dir }}:{{ go_arch }}:{{ crawler_binary }}"
+
+    - name: Build crawler when its source or toolchain changes or the binary is missing
+      ansible.builtin.command:
+        argv:
+          - "{{ go_install_dir }}/bin/go"
+          - build
+          - -o
+          - "{{ crawler_binary }}"
+          - main.go
+        chdir: "{{ crawler_dir }}"
+      environment:
+        GOTOOLCHAIN: local
+        PATH: "{{ go_install_dir }}/bin:{{ ansible_facts['env']['PATH'] }}"
+      when: >-
+        not crawler_installed_binary.stat.exists or
+        (crawler_previous_build.content | default('') | b64decode) != crawler_build_signature
+      register: crawler_build
+      changed_when: true
+      notify: Restart crawler
+
+    - name: Record the successful build state
+      ansible.builtin.copy:
+        dest: "{{ crawler_build_state_file }}"
+        content: "{{ crawler_build_signature }}"
+        owner: root
+        group: root
+        mode: "0644"
+      when: crawler_build is changed and not ansible_check_mode
+
+    - name: Ensure the crawler binary is executable
+      ansible.builtin.file:
+        path: "{{ crawler_binary }}"
+        owner: root
+        group: root
+        mode: "0755"
+      when: crawler_installed_binary.stat.exists or not ansible_check_mode
+
+    - name: Deploy crawler environment
+      ansible.builtin.copy:
+        dest: "{{ crawler_env_file }}"
+        content: |
+          TELEGRAM_BOT_TOKEN={{ telegram_bot_token }}
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      diff: false
+      notify: Restart crawler
+
+    - name: Deploy crawler systemd service
+      ansible.builtin.template:
+        src: templates/crawler.service.j2
+        dest: /etc/systemd/system/crawler.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd
+        - Restart crawler
+
+    - name: Apply service changes
+      ansible.builtin.meta: flush_handlers
+
+    - name: Ensure crawler is enabled and running
+      ansible.builtin.systemd_service:
+        name: crawler
+        state: started
+        enabled: true
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Restart crawler
+      ansible.builtin.systemd_service:
+        name: crawler
+        state: restarted
