@@ -1,5 +1,5 @@
 resource "local_file" "ansible_inventory" {
-  filename = "${path.module}/../../../shared/inventory/pihole.yaml"
+  filename = "${path.module}/../../../shared/inventory/pihole.yml"
 
   content = yamlencode({
     all = {

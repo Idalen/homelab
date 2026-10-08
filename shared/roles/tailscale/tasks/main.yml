@@ -1,0 +1,82 @@
+---
+- name: Ensure required packages are installed
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - python3-debian
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Configure Tailscale APT repository
+  ansible.builtin.deb822_repository:
+    name: tailscale
+    types:
+      - deb
+    uris: >-
+      https://pkgs.tailscale.com/stable/{{ ansible_distribution | lower }}
+    suites:
+      - "{{ ansible_distribution_release }}"
+    components:
+      - main
+    signed_by: >-
+      https://pkgs.tailscale.com/stable/{{ ansible_distribution | lower }}/{{ ansible_distribution_release }}.noarmor.gpg
+    state: present
+    enabled: true
+  register: tailscale_repository
+
+- name: Ensure Tailscale is installed
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: "{{ tailscale_repository.changed }}"
+    cache_valid_time: 3600
+
+- name: Ensure tailscaled is running
+  ansible.builtin.systemd_service:
+    name: tailscaled
+    state: started
+    enabled: true
+
+- name: Get Tailscale status
+  ansible.builtin.command:
+    cmd: tailscale status --json
+  register: tailscale_status
+  changed_when: false
+  failed_when: false
+
+- name: Parse Tailscale status
+  ansible.builtin.set_fact:
+    tailscale_backend_state: >-
+      {{ (tailscale_status.stdout | from_json).BackendState
+         if tailscale_status.rc == 0
+         else 'Unknown' }}
+
+- name: Require auth key if authentication is needed
+  ansible.builtin.assert:
+    that:
+      - tailscale_auth_key | length > 0
+    fail_msg: "Set TAILSCALE_AUTH_KEY to authenticate this node."
+  when: tailscale_backend_state in ['NeedsLogin', 'Stopped', 'Unknown']
+  no_log: true
+
+- name: Authenticate Tailscale
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - up
+      - "--auth-key={{ tailscale_auth_key }}"
+      - "--accept-routes={{ tailscale_accept_routes | lower }}"
+      - "--accept-dns={{ tailscale_accept_dns | lower }}"
+  when: tailscale_backend_state in ['NeedsLogin', 'Stopped', 'Unknown']
+  no_log: true
+
+- name: Configure Tailscale preferences
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - set
+      - "--accept-routes={{ tailscale_accept_routes | lower }}"
+      - "--accept-dns={{ tailscale_accept_dns | lower }}"
+  changed_when: false
+  when: tailscale_backend_state == 'Running'

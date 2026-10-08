@@ -49,26 +49,8 @@ pihole:
 
 
 nginx:
-	tofu -chdir=./services/nginx/terraform init -upgrade
-	tofu -chdir=./services/nginx/terraform destroy -auto-approve
 	tofu -chdir=./services/nginx/terraform apply -auto-approve
-	LXC_IP=$$(tofu -chdir=./services/nginx/terraform output -raw lxc_ip); \
-	echo "LXC IP: $$LXC_IP"; \
-	ssh-keygen -R "$$LXC_IP"; \
-	ansible localhost $(ANSIBLE_VERBOSE) -m wait_for -a "host=$$LXC_IP port=22 delay=2 timeout=300"; \
-	set -a; \
-	. ./.env; \
-	set +a; \
-	ansible-playbook $(ANSIBLE_VERBOSE) \
-		-i "$$LXC_IP," \
-		-u root \
-		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
-		./services/nginx/ansible/nginx.yml; \
-	ansible-playbook $(ANSIBLE_VERBOSE) \
-		-i "$$LXC_IP," \
-		-u root \
-		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
-		./shared/ansible/tailscale.yml
+	ansible-playbook ./services/nginx/ansible/nginx.yml
 
 crawler:
 	@if [ ! -f .env ]; then \
@@ -97,23 +79,6 @@ crawler:
 ladder:	
 	tofu -chdir=./services/ladder/terraform apply -auto-approve
 	ansible-playbook ./services/ladder/ansible/main.yml
-
-flaresolverr:
-	tofu -chdir=./services/flaresolverr/terraform init -upgrade
-	tofu -chdir=./services/flaresolverr/terraform destroy -auto-approve
-	tofu -chdir=./services/flaresolverr/terraform apply -auto-approve
-	LXC_IP=$$(tofu -chdir=./services/flaresolverr/terraform output -raw lxc_ip); \
-	echo "LXC IP: $$LXC_IP"; \
-	ssh-keygen -R "$$LXC_IP"; \
-	ansible localhost $(ANSIBLE_VERBOSE) -m wait_for -a "host=$$LXC_IP port=22 delay=2 timeout=300"; \
-	set -a; \
-	. ./.env; \
-	set +a; \
-	ansible-playbook $(ANSIBLE_VERBOSE) \
-		-i "$$LXC_IP," \
-		-u root \
-		-e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
-		./services/flaresolverr/ansible/flaresolverr.yml
 
 media:
 	tofu -chdir=./services/media/terraform init -upgrade

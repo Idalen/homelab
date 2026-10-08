@@ -1,12 +1,12 @@
 resource "local_file" "ansible_inventory" {
-  filename = "${path.module}/../../../shared/inventory/matrix.yaml"
+  filename = "${path.module}/../../../shared/inventory/nginx.yml"
 
   content = yamlencode({
     all = {
       children = {
-        matrix = {
+        nginx = {
           hosts = {
-            matrix-lxc = {
+            nginx-lxc = {
               ansible_host = module.lxc.ip_address
               ansible_user = "root"
             }

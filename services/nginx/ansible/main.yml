@@ -1,0 +1,135 @@
+---
+- name: Install and configure NGINX reverse proxy
+  hosts: nginx
+  become: true
+
+  vars:
+    nginx_config_src: "{{ playbook_dir }}/../config"
+    nginx_cert_dir: /etc/nginx/certs
+
+    nginx_sites: >-
+      {{ query('fileglob', nginx_config_src ~ '/*')
+         | map('basename') | list }}
+
+    nginx_certificates:
+      - name: home-arpa
+        common_name: "*.home.arpa"
+        sans:
+          - "DNS:*.home.arpa"
+          - "DNS:home.arpa"
+          - "DNS:localhost"
+
+      - name: ts
+        common_name: "*.ts.net"
+        sans:
+          - "DNS:*.ts.net"
+  
+  roles:
+    - tailscale
+
+  tasks:
+    - name: Install NGINX and dependencies
+      ansible.builtin.apt:
+        name:
+          - nginx
+          - openssl
+          - python3-cryptography
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Create NGINX directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - /etc/nginx/sites-available
+        - /etc/nginx/sites-enabled
+        - "{{ nginx_cert_dir }}"
+
+    - name: Generate TLS private keys
+      community.crypto.openssl_privatekey:
+        path: "{{ nginx_cert_dir }}/{{ item.name }}.key"
+        type: RSA
+        size: 2048
+        owner: root
+        group: root
+        mode: "0600"
+      loop: "{{ nginx_certificates }}"
+      loop_control:
+        label: "{{ item.name }}"
+      notify: Reload NGINX
+
+    - name: Generate certificate signing requests
+      community.crypto.openssl_csr:
+        path: "{{ nginx_cert_dir }}/{{ item.name }}.csr"
+        privatekey_path: "{{ nginx_cert_dir }}/{{ item.name }}.key"
+        common_name: "{{ item.common_name }}"
+        subject_alt_name: "{{ item.sans }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ nginx_certificates }}"
+      loop_control:
+        label: "{{ item.name }}"
+      notify: Reload NGINX
+
+    - name: Generate self-signed certificates
+      community.crypto.x509_certificate:
+        path: "{{ nginx_cert_dir }}/{{ item.name }}.crt"
+        privatekey_path: "{{ nginx_cert_dir }}/{{ item.name }}.key"
+        csr_path: "{{ nginx_cert_dir }}/{{ item.name }}.csr"
+        provider: selfsigned
+        selfsigned_not_after: "+3650d"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ nginx_certificates }}"
+      loop_control:
+        label: "{{ item.name }}"
+      notify: Reload NGINX
+
+    - name: Deploy NGINX site configurations
+      ansible.builtin.copy:
+        src: "{{ nginx_config_src }}/{{ item }}"
+        dest: "/etc/nginx/sites-available/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ nginx_sites }}"
+      notify: Reload NGINX
+
+    - name: Enable NGINX sites
+      ansible.builtin.file:
+        src: "/etc/nginx/sites-available/{{ item }}"
+        dest: "/etc/nginx/sites-enabled/{{ item }}"
+        state: link
+      loop: "{{ nginx_sites }}"
+      notify: Reload NGINX
+
+    - name: Disable default NGINX site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Reload NGINX
+
+    - name: Validate NGINX configuration
+      ansible.builtin.command:
+        cmd: nginx -t
+      changed_when: false
+
+    - name: Ensure NGINX is running
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: started
+        enabled: true
+
+  handlers:
+    - name: Reload NGINX
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded
+
