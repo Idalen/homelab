@@ -37,7 +37,6 @@
         signed_by: https://download.docker.com/linux/ubuntu/gpg
         state: present
         enabled: true
-      register: docker_repository
 
     - name: Install Docker Engine
       ansible.builtin.apt:
@@ -47,8 +46,8 @@
           - containerd.io
           - docker-compose-plugin
         state: present
-        update_cache: "{{ docker_repository.changed }}"
-        cache_valid_time: 3600
+        # Refresh after adding Docker's repository, including on retries.
+        update_cache: true
 
     - name: Ensure Docker is running
       ansible.builtin.systemd_service:

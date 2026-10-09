@@ -31,7 +31,7 @@
       - url: https://media.githubusercontent.com/media/zachlagden/Pi-hole-Optimized-Blocklists/main/lists/nsfw.txt
         comment: nsfw
 
-    pihole_dhcp_active: true
+    pihole_dhcp_active: false
     pihole_dhcp_start: "192.168.0.50"
     pihole_dhcp_end: "192.168.0.250"
     pihole_dhcp_router: "192.168.0.1"
