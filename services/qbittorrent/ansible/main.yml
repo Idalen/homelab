@@ -1,0 +1,168 @@
+---
+- name: Install and configure qBittorrent
+  hosts: qbittorrent
+  become: true
+  gather_facts: false
+
+  pre_tasks:
+    - name: Wait for the qBittorrent host to accept connections
+      ansible.builtin.wait_for_connection:
+        delay: 2
+        timeout: 300
+      when: not ansible_check_mode
+
+    - name: Gather host facts
+      ansible.builtin.setup:
+
+  vars:
+    qbittorrent_dir: /opt/qbittorrent
+    qbittorrent_uid: 1000
+    qbittorrent_gid: 1000
+    qbittorrent_storage_dir: /mnt/storage
+    qbittorrent_config_dir: "{{ qbittorrent_storage_dir }}/appdata/qbittorrent/config"
+    qbittorrent_downloads_dir: "{{ qbittorrent_storage_dir }}/downloads"
+    docker_arch: amd64
+
+  tasks:
+    - name: Verify shared storage is mounted before writing data
+      ansible.builtin.command:
+        argv: [mountpoint, --quiet, "{{ qbittorrent_storage_dir }}"]
+      changed_when: false
+      check_mode: false
+
+    - name: Install repository prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - python3-debian
+          - python3-requests
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Remove legacy Docker APT repository
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/download_docker_com_linux_ubuntu.list
+        state: absent
+
+    - name: Configure Docker APT repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: https://download.docker.com/linux/ubuntu
+        suites: ["{{ ansible_distribution_release }}"]
+        components: [stable]
+        architectures: ["{{ docker_arch }}"]
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+        enabled: true
+
+    - name: Install Docker Engine
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        # Refresh after adding Docker's repository, including on retries.
+        update_cache: true
+
+    - name: Ensure Docker is running
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create qBittorrent project directory
+      ansible.builtin.file:
+        path: "{{ qbittorrent_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create persistent qBittorrent configuration
+      ansible.builtin.file:
+        path: "{{ qbittorrent_config_dir }}"
+        state: directory
+        owner: "{{ qbittorrent_uid }}"
+        group: "{{ qbittorrent_gid }}"
+        mode: "0700"
+
+    - name: Create shared downloads directory
+      ansible.builtin.file:
+        path: "{{ qbittorrent_downloads_dir }}"
+        state: directory
+        owner: "{{ qbittorrent_uid }}"
+        group: "{{ qbittorrent_gid }}"
+        mode: "0775"
+
+    - name: Deploy Docker Compose configuration
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../config/docker-compose.yml"
+        dest: "{{ qbittorrent_dir }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Deploy qBittorrent environment
+      ansible.builtin.copy:
+        content: |
+          PUID={{ qbittorrent_uid }}
+          PGID={{ qbittorrent_gid }}
+          CONFIG_DIR={{ qbittorrent_config_dir }}
+          DOWNLOADS_DIR={{ qbittorrent_downloads_dir }}
+        dest: "{{ qbittorrent_dir }}/.env"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Ensure qBittorrent is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ qbittorrent_dir }}"
+        state: present
+        pull: missing
+        recreate: auto
+        remove_orphans: true
+
+    - name: Wait for the qBittorrent GUI to respond
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/
+        status_code: 200
+      register: qbittorrent_health
+      until: qbittorrent_health.status | default(0) == 200
+      retries: 30
+      delay: 2
+      when: not ansible_check_mode
+
+    - name: Inspect qBittorrent startup time
+      community.docker.docker_container_info:
+        name: qbittorrent
+      register: qbittorrent_runtime
+      when: not ansible_check_mode
+
+    - name: Read qBittorrent startup logs
+      ansible.builtin.command:
+        argv: [docker, logs, --since, "{{ qbittorrent_runtime.container.State.StartedAt }}", qbittorrent]
+      register: qbittorrent_startup_logs
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Show temporary qBittorrent administrator password
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'Username: admin. Temporary password: ' ~ (qbittorrent_temporary_passwords | last)
+             if qbittorrent_temporary_passwords | length > 0
+             else 'No temporary password in this startup log. Use your configured Web UI credentials.' }}
+      vars:
+        qbittorrent_temporary_passwords: >-
+          {{ ((qbittorrent_startup_logs.stdout | default('')) ~ '\n' ~
+              (qbittorrent_startup_logs.stderr | default('')))
+             | regex_findall('A temporary password is provided for this session: ([^\s]+)') }}
+      when: not ansible_check_mode
+
+    - name: Show how to access the qBittorrent GUI
+      ansible.builtin.debug:
+        msg: "Open http://{{ ansible_host }}:8080, then set a permanent administrator password in the Web UI after your first login."

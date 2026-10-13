@@ -59,6 +59,15 @@ resource "proxmox_virtual_environment_container" "container" {
     size         = var.disk_size
   }
 
+  dynamic "mount_point" {
+    for_each = var.bind_mounts
+    content {
+      volume    = mount_point.value.host_path
+      path      = mount_point.value.container_path
+      read_only = mount_point.value.read_only
+    }
+  }
+
   dynamic "device_passthrough" {
     for_each = var.enable_tun_device ? [1] : []
     content {

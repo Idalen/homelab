@@ -121,3 +121,13 @@ variable "enable_tun_device" {
   description = "Enable /dev/net/tun device passthrough"
   default     = true
 }
+
+variable "bind_mounts" {
+  description = "Host directories to bind mount into the container"
+  type = list(object({
+    host_path      = string
+    container_path = string
+    read_only      = optional(bool, false)
+  }))
+  default = []
+}

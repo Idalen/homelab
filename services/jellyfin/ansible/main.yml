@@ -1,0 +1,153 @@
+---
+- name: Install and configure Jellyfin
+  hosts: jellyfin
+  become: true
+  gather_facts: false
+
+  pre_tasks:
+    - name: Wait for the Jellyfin host to accept connections
+      ansible.builtin.wait_for_connection:
+        delay: 2
+        timeout: 300
+      when: not ansible_check_mode
+
+    - name: Gather host facts
+      ansible.builtin.setup:
+
+  vars:
+    jellyfin_dir: /opt/jellyfin
+    jellyfin_uid: 1000
+    jellyfin_gid: 1000
+    jellyfin_storage_dir: /mnt/storage
+    jellyfin_config_dir: "{{ jellyfin_storage_dir }}/appdata/jellyfin/config"
+    jellyfin_cache_dir: "{{ jellyfin_storage_dir }}/appdata/jellyfin/cache"
+    jellyfin_media_dir: "{{ jellyfin_storage_dir }}/media"
+    jellyfin_downloads_dir: "{{ jellyfin_storage_dir }}/downloads"
+    docker_arch: amd64
+
+  tasks:
+    - name: Verify shared storage is mounted before writing data
+      ansible.builtin.command:
+        argv: [mountpoint, --quiet, "{{ jellyfin_storage_dir }}"]
+      changed_when: false
+      check_mode: false
+
+    - name: Install repository prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - python3-debian
+          - python3-requests
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Remove legacy Docker APT repository
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/download_docker_com_linux_ubuntu.list
+        state: absent
+
+    - name: Configure Docker APT repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: https://download.docker.com/linux/ubuntu
+        suites: ["{{ ansible_distribution_release }}"]
+        components: [stable]
+        architectures: ["{{ docker_arch }}"]
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+        enabled: true
+
+    - name: Install Docker Engine
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        # Refresh after adding Docker's repository, including on retries.
+        update_cache: true
+
+    - name: Ensure Docker is running
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create Jellyfin project directory
+      ansible.builtin.file:
+        path: "{{ jellyfin_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create persistent Jellyfin configuration
+      ansible.builtin.file:
+        path: "{{ jellyfin_config_dir }}"
+        state: directory
+        owner: "{{ jellyfin_uid }}"
+        group: "{{ jellyfin_gid }}"
+        mode: "0700"
+
+    - name: Create persistent Jellyfin cache
+      ansible.builtin.file:
+        path: "{{ jellyfin_cache_dir }}"
+        state: directory
+        owner: "{{ jellyfin_uid }}"
+        group: "{{ jellyfin_gid }}"
+        mode: "0755"
+
+    - name: Ensure media directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - "{{ jellyfin_media_dir }}"
+        - "{{ jellyfin_downloads_dir }}"
+
+    - name: Deploy Docker Compose configuration
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../config/docker-compose.yml"
+        dest: "{{ jellyfin_dir }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Deploy Jellyfin environment
+      ansible.builtin.copy:
+        content: |
+          PUID={{ jellyfin_uid }}
+          PGID={{ jellyfin_gid }}
+          CONFIG_DIR={{ jellyfin_config_dir }}
+          CACHE_DIR={{ jellyfin_cache_dir }}
+          MEDIA_DIR={{ jellyfin_media_dir }}
+          DOWNLOADS_DIR={{ jellyfin_downloads_dir }}
+        dest: "{{ jellyfin_dir }}/.env"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Ensure Jellyfin is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ jellyfin_dir }}"
+        state: present
+        pull: missing
+        recreate: auto
+        remove_orphans: true
+
+    - name: Wait for the Jellyfin GUI to respond
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8096/health
+        status_code: 200
+      register: jellyfin_health
+      until: jellyfin_health.status | default(0) == 200
+      retries: 60
+      delay: 2
+      when: not ansible_check_mode
+
+    - name: Show how to access Jellyfin
+      ansible.builtin.debug:
+        msg: "Open http://{{ ansible_host }}:8096. Existing users and libraries are loaded from {{ jellyfin_config_dir }}."

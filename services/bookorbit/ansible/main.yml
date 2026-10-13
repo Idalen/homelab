@@ -154,7 +154,7 @@
       community.docker.docker_compose_v2:
         project_src: "{{ bookorbit_dir }}"
         state: present
-        pull: missing
+        pull: always
         recreate: auto
         remove_orphans: true
       no_log: true

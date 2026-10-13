@@ -1,6 +1,6 @@
-.PHONY: all help pihole nginx telegrambot ladder media bookorbit syncthing
+.PHONY: all help pihole nginx telegrambot ladder media bookorbit syncthing qbittorrent jellyfin
 
-all: pihole nginx telegrambot ladder media bookorbit syncthing
+all: pihole nginx telegrambot ladder media bookorbit syncthing qbittorrent jellyfin
 
 help:
 	@printf "Targets:\n"
@@ -15,6 +15,8 @@ help:
 	@printf "  media\n"
 	@printf "  bookorbit\n"
 	@printf "  syncthing\n"
+	@printf "  qbittorrent\n"
+	@printf "  jellyfin\n"
 
 pihole:
 	tofu -chdir=./services/pihole/terraform apply -auto-approve
@@ -44,6 +46,16 @@ bookorbit:
 syncthing:
 	tofu -chdir=./services/syncthing/terraform apply -auto-approve
 	ansible-playbook ./services/syncthing/ansible/main.yml
+
+qbittorrent:
+	tofu -chdir=./services/qbittorrent/terraform init
+	tofu -chdir=./services/qbittorrent/terraform apply -auto-approve
+	ansible-playbook ./services/qbittorrent/ansible/main.yml
+
+jellyfin:
+	tofu -chdir=./services/jellyfin/terraform init
+	tofu -chdir=./services/jellyfin/terraform apply -auto-approve
+	ansible-playbook ./services/jellyfin/ansible/main.yml
 
 %:
 	@:

@@ -20,6 +20,8 @@ ips:
   ftp: "192.168.0.5"
   vaultwarden: "192.168.0.6"
   syncthing: "192.168.0.8"
+  qbittorrent: "192.168.0.10"
+  jellyfin: "192.168.0.9"
   telegrambot: "192.168.0.201"
   # immich: variable (defined per deployment)
   # media: variable (defined per deployment)

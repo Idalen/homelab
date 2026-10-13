@@ -1,0 +1,20 @@
+services:
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    # Docker inside LXC cannot load its own AppArmor profiles.
+    security_opt:
+      - apparmor=unconfined
+    environment:
+      PUID: "${PUID}"
+      PGID: "${PGID}"
+      TZ: America/Sao_Paulo
+    volumes:
+      - ${CONFIG_DIR}:/config
+      - ${CACHE_DIR}:/cache
+      # Preserve library paths from the original media VM.
+      - ${MEDIA_DIR}:/data:ro
+      - ${DOWNLOADS_DIR}:/data/downloads:ro
+    ports:
+      - "8096:8096"
+    restart: unless-stopped

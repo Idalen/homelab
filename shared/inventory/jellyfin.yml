@@ -1,0 +1,7 @@
+"all":
+  "children":
+    "jellyfin":
+      "hosts":
+        "jellyfin-lxc":
+          "ansible_host": "192.168.0.9"
+          "ansible_user": "root"
