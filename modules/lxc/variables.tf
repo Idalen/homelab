@@ -131,3 +131,12 @@ variable "bind_mounts" {
   }))
   default = []
 }
+
+variable "device_passthrough" {
+  description = "Additional host devices to pass through into the container"
+  type = list(object({
+    path = string
+    mode = optional(string, "0666")
+  }))
+  default = []
+}

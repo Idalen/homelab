@@ -28,6 +28,11 @@ module "lxc" {
 
   unprivileged = false
 
+  device_passthrough = [{
+    path = "/dev/dri/renderD128"
+    mode = "0666"
+  }]
+
   bind_mounts = [{
     host_path      = "/mnt/storage"
     container_path = "/mnt/storage"

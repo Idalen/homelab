@@ -38,6 +38,8 @@
           - ca-certificates
           - python3-debian
           - python3-requests
+          - vainfo
+          - intel-media-va-driver
         state: present
         update_cache: true
         cache_valid_time: 3600

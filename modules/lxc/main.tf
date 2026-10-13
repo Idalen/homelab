@@ -69,10 +69,10 @@ resource "proxmox_virtual_environment_container" "container" {
   }
 
   dynamic "device_passthrough" {
-    for_each = var.enable_tun_device ? [1] : []
+    for_each = concat(var.enable_tun_device ? [{ path = "/dev/net/tun", mode = "0666" }] : [], var.device_passthrough)
     content {
-      path       = "/dev/net/tun"
-      mode       = "0666"
+      path       = device_passthrough.value.path
+      mode       = device_passthrough.value.mode
       deny_write = false
     }
   }
