@@ -1,3 +1,7 @@
+# Ladder matches domain suffixes literally; "*" is not a wildcard.
+- domain: prachub.com
+  useFlareSolverr: true
+
 - domain: "*"
   useFlareSolverr: true
   injections:

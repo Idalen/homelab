@@ -1,0 +1,16 @@
+services:
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    # Docker inside LXC cannot load its own AppArmor profiles.
+    security_opt:
+      - apparmor=unconfined
+    environment:
+      PUID: "${PUID}"
+      PGID: "${PGID}"
+      TZ: America/Sao_Paulo
+    volumes:
+      - ${CONFIG_DIR}:/config
+    ports:
+      - "9696:9696"
+    restart: unless-stopped

@@ -1,11 +1,16 @@
 services:
   ladder:
-    image: ghcr.io/everywall/ladder:latest
+    # Published latest predates returning FlareSolverr's rendered HTML.
+    image: homelab/ladder:d8f8ce46
+    build:
+      context: https://github.com/everywall/ladder.git#d8f8ce46bee7a24adbe75b0ec97e60b1e44c09f7
+      args:
+        VERSION: d8f8ce46
     ports:
       - "8080:8080"
     environment:
       - RULESET=/rules/rules.yaml
-      - FLARESOLVERR_HOST=http://flaresolverr:8191
+      - FLARESOLVERR_HOST=${FLARESOLVERR_HOST:?Set FLARESOLVERR_HOST}
     volumes:
       - /srv/ladder/rules.yaml:/rules/rules.yaml
     restart: always

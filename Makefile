@@ -1,6 +1,6 @@
-.PHONY: all help pihole nginx telegrambot ladder media bookorbit syncthing qbittorrent jellyfin
+.PHONY: all help pihole nginx telegrambot ladder media bookorbit syncthing qbittorrent jellyfin prowlarr flaresolverr
 
-all: pihole nginx telegrambot ladder media bookorbit syncthing qbittorrent jellyfin
+all: pihole nginx telegrambot ladder media bookorbit syncthing qbittorrent jellyfin prowlarr flaresolverr
 
 help:
 	@printf "Targets:\n"
@@ -12,11 +12,13 @@ help:
 	@printf "  nginx\n"
 	@printf "  telegrambot\n"
 	@printf "  ladder\n"
+	@printf "  flaresolverr\n"
 	@printf "  media\n"
 	@printf "  bookorbit\n"
 	@printf "  syncthing\n"
 	@printf "  qbittorrent\n"
 	@printf "  jellyfin\n"
+	@printf "  prowlarr\n"
 
 pihole:
 	tofu -chdir=./services/pihole/terraform apply -auto-approve
@@ -31,7 +33,7 @@ telegrambot:
 	tofu -chdir=./services/telegrambot/terraform apply -auto-approve
 	ansible-playbook ./services/telegrambot/ansible/main.yml
 
-ladder:	
+ladder: flaresolverr
 	tofu -chdir=./services/ladder/terraform apply -auto-approve
 	ansible-playbook ./services/ladder/ansible/main.yml
 
@@ -56,6 +58,16 @@ jellyfin:
 	tofu -chdir=./services/jellyfin/terraform init
 	tofu -chdir=./services/jellyfin/terraform apply -auto-approve
 	ansible-playbook ./services/jellyfin/ansible/main.yml
+
+flaresolverr:
+	tofu -chdir=./services/flaresolverr/terraform init
+	tofu -chdir=./services/flaresolverr/terraform apply -auto-approve
+	ansible-playbook ./services/flaresolverr/ansible/main.yml
+
+prowlarr:
+	tofu -chdir=./services/prowlarr/terraform init
+	tofu -chdir=./services/prowlarr/terraform apply -auto-approve
+	ansible-playbook ./services/prowlarr/ansible/main.yml
 
 %:
 	@:

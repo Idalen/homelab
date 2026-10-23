@@ -55,7 +55,7 @@ module "lxc" {
   dns_domain  = local.network.domain
   dns_servers = [local.network.ips.pihole, local.network.external_dns[0]]
 
-  memory_dedicated  = 256
+  memory_dedicated  = 512
   disk_size         = 16
   enable_nesting    = true
   enable_tun_device = true

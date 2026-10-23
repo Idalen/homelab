@@ -1,0 +1,131 @@
+---
+- name: Install and configure Prowlarr
+  hosts: prowlarr
+  become: true
+  gather_facts: false
+
+  pre_tasks:
+    - name: Wait for the Prowlarr host to accept connections
+      ansible.builtin.wait_for_connection:
+        delay: 2
+        timeout: 300
+      when: not ansible_check_mode
+
+    - name: Gather host facts
+      ansible.builtin.setup:
+
+  vars:
+    prowlarr_dir: /opt/prowlarr
+    prowlarr_uid: 1000
+    prowlarr_gid: 1000
+    prowlarr_storage_dir: /mnt/storage
+    prowlarr_config_dir: "{{ prowlarr_storage_dir }}/appdata/prowlarr/config"
+    docker_arch: amd64
+
+  tasks:
+    - name: Verify shared storage is mounted before writing data
+      ansible.builtin.command:
+        argv: [mountpoint, --quiet, "{{ prowlarr_storage_dir }}"]
+      changed_when: false
+      check_mode: false
+
+    - name: Install repository prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - python3-debian
+          - python3-requests
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Remove legacy Docker APT repository
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/download_docker_com_linux_ubuntu.list
+        state: absent
+
+    - name: Configure Docker APT repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: https://download.docker.com/linux/ubuntu
+        suites: ["{{ ansible_distribution_release }}"]
+        components: [stable]
+        architectures: ["{{ docker_arch }}"]
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+        enabled: true
+
+    - name: Install Docker Engine
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        # Refresh after adding Docker's repository, including on retries.
+        update_cache: true
+
+    - name: Ensure Docker is running
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create Prowlarr project directory
+      ansible.builtin.file:
+        path: "{{ prowlarr_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create persistent Prowlarr configuration
+      ansible.builtin.file:
+        path: "{{ prowlarr_config_dir }}"
+        state: directory
+        owner: "{{ prowlarr_uid }}"
+        group: "{{ prowlarr_gid }}"
+        mode: "0700"
+
+    - name: Deploy Docker Compose configuration
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../config/docker-compose.yml"
+        dest: "{{ prowlarr_dir }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Deploy Prowlarr environment
+      ansible.builtin.copy:
+        content: |
+          PUID={{ prowlarr_uid }}
+          PGID={{ prowlarr_gid }}
+          CONFIG_DIR={{ prowlarr_config_dir }}
+        dest: "{{ prowlarr_dir }}/.env"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Ensure Prowlarr is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ prowlarr_dir }}"
+        state: present
+        pull: missing
+        recreate: auto
+        remove_orphans: true
+
+    - name: Wait for the Prowlarr GUI to respond
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9696/ping
+        status_code: 200
+      register: prowlarr_health
+      until: prowlarr_health.status | default(0) == 200
+      retries: 30
+      delay: 2
+      when: not ansible_check_mode
+
+    - name: Show how to access the Prowlarr GUI
+      ansible.builtin.debug:
+        msg: "Open http://{{ ansible_host }}:9696, configure authentication, then add your indexers and applications."

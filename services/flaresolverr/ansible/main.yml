@@ -1,0 +1,110 @@
+---
+- name: Install and configure FlareSolverr
+  hosts: flaresolverr
+  become: true
+  gather_facts: false
+
+  vars_files:
+    - ../../../shared/network.yml
+
+  pre_tasks:
+    - name: Wait for the FlareSolverr host to accept connections
+      ansible.builtin.wait_for_connection:
+        delay: 2
+        timeout: 300
+      when: not ansible_check_mode
+
+    - name: Gather host facts
+      ansible.builtin.setup:
+
+  vars:
+    flaresolverr_dir: /srv/flaresolverr
+    docker_arch: amd64
+
+  tasks:
+    - name: Install repository prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - python3-debian
+          - python3-requests
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Remove legacy Docker APT repository
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/download_docker_com_linux_ubuntu.list
+        state: absent
+
+    - name: Configure Docker APT repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types:
+          - deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites:
+          - "{{ ansible_distribution_release }}"
+        components:
+          - stable
+        architectures:
+          - "{{ docker_arch }}"
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+        enabled: true
+
+    - name: Install Docker Engine
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        # Refresh after adding Docker's repository, including on retries.
+        update_cache: true
+
+    - name: Ensure Docker is running
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create FlareSolverr directory
+      ansible.builtin.file:
+        path: "{{ flaresolverr_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Deploy FlareSolverr configuration
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ flaresolverr_dir }}/{{ item | basename }}"
+        mode: "0644"
+      loop:
+        - ../config/docker-compose.yml
+
+    - name: Deploy FlareSolverr environment
+      ansible.builtin.copy:
+        content: |
+          FLARESOLVERR_BIND_IP={{ ips.flaresolverr }}
+        dest: "{{ flaresolverr_dir }}/.env"
+        mode: "0644"
+
+    - name: Ensure FlareSolverr is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ flaresolverr_dir }}"
+        state: present
+        pull: missing
+        recreate: auto
+        remove_orphans: true
+
+    - name: Wait for the FlareSolverr API to respond
+      ansible.builtin.uri:
+        url: "http://{{ ips.flaresolverr }}:8191/"
+        status_code: 200
+      register: flaresolverr_health
+      until: flaresolverr_health.status | default(0) == 200
+      retries: 30
+      delay: 2
+      when: not ansible_check_mode

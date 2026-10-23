@@ -3,6 +3,9 @@
   hosts: ladder
   become: true
 
+  vars_files:
+    - ../../../shared/network.yml
+
   vars:
     ladder_dir: /srv/ladder
     docker_arch: amd64
@@ -69,11 +72,30 @@
       loop:
         - ../config/docker-compose.yml
         - ../config/rules.yaml
+      register: ladder_configuration
 
-    - name: Ensure Ladder are running
+    - name: Deploy Ladder environment
+      ansible.builtin.copy:
+        content: |
+          FLARESOLVERR_HOST=http://{{ ips.flaresolverr }}:8191
+        dest: "{{ ladder_dir }}/.env"
+        mode: "0644"
+
+    - name: Verify FlareSolverr is reachable from Ladder
+      ansible.builtin.uri:
+        url: "http://{{ ips.flaresolverr }}:8191/"
+        status_code: 200
+      register: flaresolverr_health
+      until: flaresolverr_health.status | default(0) == 200
+      retries: 15
+      delay: 2
+      when: not ansible_check_mode
+
+    - name: Ensure Ladder is running
       community.docker.docker_compose_v2:
         project_src: "{{ ladder_dir }}"
         state: present
-        pull: missing
-        recreate: auto
+        build: always
+        pull: never
+        recreate: "{{ 'always' if ladder_configuration.changed else 'auto' }}"
         remove_orphans: true

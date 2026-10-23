@@ -61,6 +61,11 @@ module "lxc" {
   description = "Syncthing file synchronization"
   vmid        = var.vmid
 
+  bind_mounts = [{
+    host_path      = "/mnt/storage"
+    container_path = "/mnt/storage"
+  }]
+
   ip_address = "${local.network.ips.syncthing}/${split("/", local.network.subnet)[1]}"
   gateway    = local.network.gateway
 
