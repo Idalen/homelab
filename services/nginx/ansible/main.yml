@@ -23,6 +23,11 @@
         common_name: "*.ts.net"
         sans:
           - "DNS:*.ts.net"
+      - name: matrix
+        common_name: "matrix.quati.xyz"
+        sans:
+          - "DNS:matrix.quati.xyz"
+          - "DNS:quati.xyz"
   
   roles:
     - tailscale
@@ -48,7 +53,17 @@
       loop:
         - /etc/nginx/sites-available
         - /etc/nginx/sites-enabled
+        - /etc/nginx/snippets
         - "{{ nginx_cert_dir }}"
+
+    - name: Deploy NGINX allowed origins
+      ansible.builtin.copy:
+        src: ../snippets/allowed-origins.conf
+        dest: /etc/nginx/snippets/allowed-origins.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload NGINX
 
     - name: Generate TLS private keys
       community.crypto.openssl_privatekey:

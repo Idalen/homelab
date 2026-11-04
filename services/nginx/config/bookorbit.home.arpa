@@ -1,4 +1,5 @@
 server {
+  include /etc/nginx/snippets/allowed-origins.conf;
   listen 80;
   server_name bookorbit.home.arpa;
 
@@ -6,6 +7,7 @@ server {
 }
 
 server {
+  include /etc/nginx/snippets/allowed-origins.conf;
   listen 443 ssl;
   server_name bookorbit.home.arpa;
 

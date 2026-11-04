@@ -9,7 +9,7 @@
 
   vars:
     matrix_dir: /opt/continuwuity
-    matrix_server_name: "{{ lookup('ansible.builtin.env', 'MATRIX_SERVER_NAME') | default('matrix.quati.xyz', true) }}"
+    matrix_server_name: "{{ lookup('ansible.builtin.env', 'MATRIX_SERVER_NAME') | default('quati.xyz', true) }}"
 
   tasks:
     - name: Prepare the Continuwuity host
@@ -39,14 +39,6 @@
             owner: root
             group: root
             mode: "0755"
-
-        - name: Deploy the Compose configuration
-          ansible.builtin.copy:
-            src: ../config/docker-compose.yml
-            dest: "{{ matrix_dir }}/docker-compose.yml"
-            owner: root
-            group: root
-            mode: "0644"
 
     - name: Configure and start Continuwuity
       tags: [deploy]
@@ -84,15 +76,38 @@
               -e matrix_server_name=chat.example.com. An existing server identity
               cannot be changed by this playbook.
 
+        - name: Read the existing registration token
+          ansible.builtin.set_fact:
+            matrix_registration_token: >-
+              {{ ((matrix_existing_env.content | default('') | b64decode)
+                  | regex_findall('(?m)^MATRIX_REGISTRATION_TOKEN=(.*)$') | first) | default('') }}
+          no_log: true
+
+        - name: Generate a registration token when missing
+          ansible.builtin.set_fact:
+            matrix_registration_token: "{{ lookup('ansible.builtin.password', '/dev/null', length=64, chars=['ascii_letters', 'digits']) }}"
+          when: matrix_registration_token | length == 0
+          no_log: true
+
+        - name: Deploy the Compose configuration
+          ansible.builtin.copy:
+            src: ../config/docker-compose.yml
+            dest: "{{ matrix_dir }}/docker-compose.yml"
+            owner: root
+            group: root
+            mode: "0644"
+
         - name: Deploy the environment
           ansible.builtin.copy:
             content: |
               MATRIX_SERVER_NAME={{ matrix_effective_server_name }}
               MATRIX_IPV4={{ ips.matrix }}
+              MATRIX_REGISTRATION_TOKEN={{ matrix_registration_token }}
             dest: "{{ matrix_dir }}/.env"
             owner: root
             group: root
             mode: "0600"
+          no_log: true
 
         - name: Start Continuwuity
           community.docker.docker_compose_v2:
@@ -109,4 +124,59 @@
           until: matrix_health.status | default(0) == 200
           retries: 30
           delay: 2
+          when: not ansible_check_mode
+
+        - name: Check the configured registration token
+          ansible.builtin.uri:
+            url: "http://{{ ips.matrix }}:8008/_matrix/client/v1/register/m.login.registration_token/validity?token={{ matrix_registration_token | urlencode }}"
+            return_content: true
+          register: matrix_token_validity
+          no_log: true
+          when: not ansible_check_mode
+
+        - name: Read the initial setup token when the configured token is not active
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - |
+                import re, subprocess
+                logs = subprocess.check_output(
+                    ['docker', 'logs', '--tail', '2000', 'continuwuity'],
+                    stderr=subprocess.STDOUT, text=True)
+                logs = re.sub(chr(27) + r'\[[0-9;]*m', '', logs)
+                tokens = re.findall(r'using the registration token ([A-Za-z0-9]+)', logs)
+                if not tokens:
+                    raise SystemExit('Initial setup token not found in container logs')
+                print(tokens[-1])
+          register: matrix_initial_token
+          changed_when: false
+          no_log: true
+          when:
+            - not ansible_check_mode
+            - not (matrix_token_validity.json.valid | default(false))
+
+        - name: Select the active registration token
+          ansible.builtin.set_fact:
+            matrix_active_registration_token: >-
+              {{ matrix_registration_token if matrix_token_validity.json.valid
+                 else matrix_initial_token.stdout | trim }}
+          no_log: true
+          when: not ansible_check_mode
+
+        - name: Verify the selected registration token
+          ansible.builtin.uri:
+            url: "http://{{ ips.matrix }}:8008/_matrix/client/v1/register/m.login.registration_token/validity?token={{ matrix_active_registration_token | urlencode }}"
+            return_content: true
+          register: matrix_active_token_validity
+          failed_when: not (matrix_active_token_validity.json.valid | default(false))
+          no_log: true
+          when: not ansible_check_mode
+
+        - name: Show the active registration token
+          ansible.builtin.debug:
+            msg: >-
+              {{ 'Matrix registration token' if matrix_token_validity.json.valid
+                 else 'Matrix initial setup token (create the first account)' }}:
+              {{ matrix_active_registration_token }}
           when: not ansible_check_mode

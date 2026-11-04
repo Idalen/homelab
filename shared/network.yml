@@ -10,7 +10,7 @@ ipv6:
   subnet: "2804:14c:47:2b95::/64"
   gateway: "2804:14c:47:2b95::1"
   ips:
-    nginx: "2804:14c:47:2b95::19"
+    nginx: "2804:14c:47:2b95::3"
 
 # External DNS servers (used when pihole is unavailable)
 external_dns:
