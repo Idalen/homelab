@@ -37,6 +37,18 @@ variable "gateway" {
   default     = "192.168.0.1"
 }
 
+variable "ipv6_address" {
+  type        = string
+  description = "IPv6 address in CIDR notation, auto for SLAAC, or dhcp for DHCPv6; null disables IPv6 configuration"
+  default     = null
+}
+
+variable "ipv6_gateway" {
+  type        = string
+  description = "IPv6 gateway for static addressing; omit for SLAAC or DHCPv6"
+  default     = null
+}
+
 variable "dns_servers" {
   type        = list(string)
   description = "DNS servers"

@@ -60,8 +60,4 @@ module "lxc" {
   disk_size        = 10
 
   enable_tun_device = false
-
-  # CT 201 already exists; preserve its creation-time template and credentials.
-  configure_initial_user = false
-  template_file_id       = ""
 }

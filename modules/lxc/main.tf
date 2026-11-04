@@ -32,6 +32,14 @@ resource "proxmox_virtual_environment_container" "container" {
         address = var.ip_address
         gateway = var.gateway
       }
+
+      dynamic "ipv6" {
+        for_each = var.ipv6_address == null ? [] : [var.ipv6_address]
+        content {
+          address = ipv6.value
+          gateway = var.ipv6_gateway
+        }
+      }
     }
 
     dns {

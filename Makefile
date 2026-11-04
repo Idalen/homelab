@@ -1,4 +1,4 @@
-.PHONY: all help pihole nginx telegrambot ladder media bookorbit syncthing qbittorrent jellyfin prowlarr flaresolverr
+.PHONY: all help pihole nginx telegrambot ladder media bookorbit syncthing qbittorrent jellyfin prowlarr flaresolverr matrix
 
 all: pihole nginx telegrambot ladder media bookorbit syncthing qbittorrent jellyfin prowlarr flaresolverr
 
@@ -19,6 +19,7 @@ help:
 	@printf "  qbittorrent\n"
 	@printf "  jellyfin\n"
 	@printf "  prowlarr\n"
+	@printf "  matrix\n"
 
 pihole:
 	tofu -chdir=./services/pihole/terraform apply -auto-approve
@@ -68,6 +69,10 @@ prowlarr:
 	tofu -chdir=./services/prowlarr/terraform init
 	tofu -chdir=./services/prowlarr/terraform apply -auto-approve
 	ansible-playbook ./services/prowlarr/ansible/main.yml
+
+matrix:
+	tofu -chdir=./services/matrix/terraform init
+	tofu -chdir=./services/matrix/terraform apply -auto-approve
 
 %:
 	@:

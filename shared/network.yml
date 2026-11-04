@@ -5,6 +5,13 @@
 subnet: "192.168.0.0/24"
 gateway: "192.168.0.1"
 
+# Static IPv6 assignment for Matrix.
+ipv6:
+  subnet: "2804:14c:47:2b95::/64"
+  gateway: "2804:14c:47:2b95::1"
+  ips:
+    matrix: "2804:14c:47:2b95::19"
+
 # External DNS servers (used when pihole is unavailable)
 external_dns:
   - "1.1.1.1"
