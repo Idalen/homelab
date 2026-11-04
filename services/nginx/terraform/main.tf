@@ -52,6 +52,9 @@ module "lxc" {
   ip_address = "${local.network.ips.nginx}/${split("/", local.network.subnet)[1]}"
   gateway    = local.network.gateway
 
+  ipv6_address = "${local.network.ipv6.ips.nginx}/${split("/", local.network.ipv6.subnet)[1]}"
+  ipv6_gateway = local.network.ipv6.gateway
+
   dns_domain  = local.network.domain
   dns_servers = [local.network.ips.pihole]
 
