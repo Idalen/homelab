@@ -1,0 +1,24 @@
+services:
+  continuwuity:
+    image: forgejo.ellis.link/continuwuation/continuwuity:latest
+    container_name: continuwuity
+    restart: unless-stopped
+    command: /sbin/conduwuit
+    # Use the LXC's IPv4 directly, including for outbound federation.
+    network_mode: host
+    environment:
+      CONTINUWUITY_SERVER_NAME: ${MATRIX_SERVER_NAME:?Set the permanent Matrix server domain}
+      CONTINUWUITY_DATABASE_PATH: /var/lib/continuwuity
+      CONTINUWUITY_ADDRESS: '["${MATRIX_IPV4:?Set Matrix IPv4}"]'
+      CONTINUWUITY_PORT: '8008'
+      CONTINUWUITY_ALLOW_REGISTRATION: 'false'
+      CONTINUWUITY_DB_CACHE_CAPACITY_MB: '64'
+      CONTINUWUITY_DB_WRITE_BUFFER_CAPACITY_MB: '16'
+    volumes:
+      - continuwuity-data:/var/lib/continuwuity
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 60s
+
+volumes:
+  continuwuity-data:

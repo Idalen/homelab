@@ -73,6 +73,7 @@ prowlarr:
 matrix:
 	tofu -chdir=./services/matrix/terraform init
 	tofu -chdir=./services/matrix/terraform apply -auto-approve
+	ansible-playbook ./services/matrix/ansible/main.yml
 
 %:
 	@:

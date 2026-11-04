@@ -1,0 +1,112 @@
+---
+- name: Install and configure Continuwuity
+  hosts: matrix
+  become: true
+  gather_facts: false
+
+  vars_files:
+    - ../../../shared/network.yml
+
+  vars:
+    matrix_dir: /opt/continuwuity
+    matrix_server_name: "{{ lookup('ansible.builtin.env', 'MATRIX_SERVER_NAME') | default('matrix.quati.xyz', true) }}"
+
+  tasks:
+    - name: Prepare the Continuwuity host
+      tags: [prepare]
+      block:
+        - name: Install Docker and Compose
+          ansible.builtin.apt:
+            name:
+              - ca-certificates
+              - docker.io
+              - docker-compose-v2
+            state: present
+            update_cache: true
+            cache_valid_time: 3600
+            lock_timeout: 300
+
+        - name: Enable Docker
+          ansible.builtin.systemd_service:
+            name: docker
+            state: started
+            enabled: true
+
+        - name: Create the Continuwuity directory
+          ansible.builtin.file:
+            path: "{{ matrix_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Deploy the Compose configuration
+          ansible.builtin.copy:
+            src: ../config/docker-compose.yml
+            dest: "{{ matrix_dir }}/docker-compose.yml"
+            owner: root
+            group: root
+            mode: "0644"
+
+    - name: Configure and start Continuwuity
+      tags: [deploy]
+      block:
+        - name: Check for an existing environment
+          ansible.builtin.stat:
+            path: "{{ matrix_dir }}/.env"
+          register: matrix_env
+
+        - name: Read the existing environment
+          ansible.builtin.slurp:
+            src: "{{ matrix_dir }}/.env"
+          register: matrix_existing_env
+          when: matrix_env.stat.exists
+          no_log: true
+
+        - name: Read the existing server identity
+          ansible.builtin.set_fact:
+            matrix_existing_server_name: >-
+              {{ ((matrix_existing_env.content | default('') | b64decode)
+                  | regex_findall('(?m)^MATRIX_SERVER_NAME=(.*)$') | first) | default('') }}
+
+        - name: Select the permanent server identity
+          ansible.builtin.set_fact:
+            matrix_effective_server_name: >-
+              {{ matrix_server_name if matrix_server_name | length > 0 else matrix_existing_server_name }}
+
+        - name: Require a domain and preserve the existing server identity
+          ansible.builtin.assert:
+            that:
+              - matrix_effective_server_name is match('^(?=.{1,253}$)([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$')
+              - matrix_existing_server_name == '' or matrix_existing_server_name == matrix_effective_server_name
+            fail_msg: >-
+              Set MATRIX_SERVER_NAME to your permanent Matrix domain, or pass
+              -e matrix_server_name=chat.example.com. An existing server identity
+              cannot be changed by this playbook.
+
+        - name: Deploy the environment
+          ansible.builtin.copy:
+            content: |
+              MATRIX_SERVER_NAME={{ matrix_effective_server_name }}
+              MATRIX_IPV4={{ ips.matrix }}
+            dest: "{{ matrix_dir }}/.env"
+            owner: root
+            group: root
+            mode: "0600"
+
+        - name: Start Continuwuity
+          community.docker.docker_compose_v2:
+            project_src: "{{ matrix_dir }}"
+            state: present
+            pull: missing
+            recreate: auto
+
+        - name: Wait for the Matrix client API
+          ansible.builtin.uri:
+            url: "http://{{ ips.matrix }}:8008/_matrix/client/versions"
+            status_code: 200
+          register: matrix_health
+          until: matrix_health.status | default(0) == 200
+          retries: 30
+          delay: 2
+          when: not ansible_check_mode
