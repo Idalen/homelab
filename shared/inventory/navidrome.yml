@@ -1,0 +1,7 @@
+"all":
+  "children":
+    "navidrome":
+      "hosts":
+        "navidrome-lxc":
+          "ansible_host": "192.168.0.13"
+          "ansible_user": "root"

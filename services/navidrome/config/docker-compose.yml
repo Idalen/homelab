@@ -1,0 +1,16 @@
+services:
+  navidrome:
+    image: navidrome/navidrome:latest
+    container_name: navidrome
+    user: "${PUID}:${PGID}"
+    # Docker inside LXC cannot load its own AppArmor profiles.
+    security_opt:
+      - apparmor=unconfined
+    environment:
+      TZ: America/Sao_Paulo
+    volumes:
+      - ${DATA_DIR}:/data
+      - ${MUSIC_DIR}:/music:ro
+    ports:
+      - "4533:4533"
+    restart: unless-stopped
