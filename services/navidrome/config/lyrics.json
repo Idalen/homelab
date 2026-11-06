@@ -1,0 +1,15 @@
+{
+  "providersList": [
+    {"provider": "lrclib", "romanizationScript": "none", "translationLanguage": "none"},
+    {"provider": "lyrics.ovh", "romanizationScript": "none", "translationLanguage": "none"}
+  ],
+  "providerMode": "priority",
+  "lyricsFormats": "ttml,elrc,lyricsfile,lrc,srt,plain",
+  "durationToleranceSeconds": 3,
+  "enableCache": true,
+  "cacheTtlHours": 168,
+  "negativeCache": true,
+  "negativeCacheTtlHours": 24,
+  "writeLyrics": false,
+  "overwriteLyrics": false
+}

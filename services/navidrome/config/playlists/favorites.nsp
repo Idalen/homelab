@@ -1,0 +1,7 @@
+{
+  "name": "Favorites",
+  "all": [{"is": {"loved": true}}],
+  "sort": "dateLoved",
+  "order": "desc",
+  "limit": 500
+}

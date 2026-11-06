@@ -1,0 +1,7 @@
+{
+  "name": "Recently Added",
+  "all": [{"inTheLast": {"dateAdded": 30}}],
+  "sort": "dateAdded",
+  "order": "desc",
+  "limit": 200
+}

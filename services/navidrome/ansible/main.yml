@@ -21,6 +21,10 @@
     navidrome_storage_dir: /mnt/storage
     navidrome_data_dir: "{{ navidrome_storage_dir }}/appdata/navidrome"
     navidrome_music_dir: "{{ navidrome_storage_dir }}/downloads/music"
+    navidrome_apple_music_version: v0.2.0
+    navidrome_apple_music_checksum: sha256:3682751e72caa5cc46b3f7ab70de70ea026f0a38a47f780b2d2b4922ed0ad154
+    navidrome_lyrics_version: v8.1.0
+    navidrome_lyrics_checksum: sha256:29dd571ba0d4bb756e62c0d5c594a2d7e7c9ccec2950f3b027bd64c73c605715
     docker_arch: amd64
 
   tasks:
@@ -90,11 +94,69 @@
         group: "{{ navidrome_gid }}"
         mode: "0700"
 
+    - name: Create Navidrome plugins directory
+      ansible.builtin.file:
+        path: "{{ navidrome_data_dir }}/plugins"
+        state: directory
+        owner: "{{ navidrome_uid }}"
+        group: "{{ navidrome_gid }}"
+        mode: "0755"
+
+    - name: Download Apple Music metadata plugin
+      ansible.builtin.get_url:
+        url: "https://github.com/navidrome/apple-music-plugin/releases/download/{{ navidrome_apple_music_version }}/apple-music.ndp"
+        dest: "{{ navidrome_data_dir }}/plugins/apple-music.ndp"
+        checksum: "{{ navidrome_apple_music_checksum }}"
+        owner: "{{ navidrome_uid }}"
+        group: "{{ navidrome_gid }}"
+        mode: "0644"
+      register: navidrome_apple_music_plugin
+
+    - name: Download lyrics plugin
+      ansible.builtin.get_url:
+        url: "https://github.com/J0R6IT0/navidrome-lyrics-plugin/releases/download/{{ navidrome_lyrics_version }}/nd-lyrics.ndp"
+        dest: "{{ navidrome_data_dir }}/plugins/nd-lyrics.ndp"
+        checksum: "{{ navidrome_lyrics_checksum }}"
+        owner: "{{ navidrome_uid }}"
+        group: "{{ navidrome_gid }}"
+        mode: "0644"
+      register: navidrome_lyrics_plugin
+
+    - name: Deploy Navidrome configuration
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../config/navidrome.toml"
+        dest: "{{ navidrome_data_dir }}/navidrome.toml"
+        owner: "{{ navidrome_uid }}"
+        group: "{{ navidrome_gid }}"
+        mode: "0644"
+      register: navidrome_configuration
+
+    - name: Deploy suggested lyrics plugin settings
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../config/lyrics.json"
+        dest: "{{ navidrome_data_dir }}/lyrics.json"
+        owner: "{{ navidrome_uid }}"
+        group: "{{ navidrome_gid }}"
+        mode: "0644"
+
     - name: Ensure the music directory exists
       ansible.builtin.file:
         path: "{{ navidrome_music_dir }}"
         state: directory
         mode: "0755"
+
+    - name: Create managed smart playlists directory
+      ansible.builtin.file:
+        path: "{{ navidrome_music_dir }}/_playlists"
+        state: directory
+        mode: "0755"
+
+    - name: Deploy smart playlists for import on the next library scan
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../config/playlists/"
+        dest: "{{ navidrome_music_dir }}/_playlists/"
+        mode: "0644"
+        directory_mode: "0755"
 
     - name: Deploy Docker Compose configuration
       ansible.builtin.copy:
@@ -121,7 +183,7 @@
         project_src: "{{ navidrome_dir }}"
         state: present
         pull: missing
-        recreate: auto
+        recreate: "{{ 'always' if navidrome_configuration.changed or navidrome_apple_music_plugin.changed or navidrome_lyrics_plugin.changed else 'auto' }}"
         remove_orphans: true
 
     - name: Wait for the Navidrome GUI to respond

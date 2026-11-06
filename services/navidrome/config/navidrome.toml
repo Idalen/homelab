@@ -1,0 +1,8 @@
+Agents = "apple-music,deezer,lastfm"
+# Keep local lyrics first, then fetch missing lyrics on demand.
+LyricsPriority = ".ttml,.yaml,.yml,.elrc,.lrc,.srt,.txt,embedded,nd-lyrics"
+AutoImportPlaylists = true
+
+[Plugins]
+Enabled = true
+Folder = "/data/plugins"
