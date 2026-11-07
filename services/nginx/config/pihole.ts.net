@@ -1,5 +1,5 @@
 server {
-  include /etc/nginx/snippets/allowed-origins.conf;
+  include /etc/nginx/snippets/allowed-tailscale.conf;
   listen 80;
   server_name pihole.ts.net;
 
@@ -7,7 +7,7 @@ server {
 }
 
 server {
-  include /etc/nginx/snippets/allowed-origins.conf;
+  include /etc/nginx/snippets/allowed-tailscale.conf;
   listen 443 ssl;
   server_name pihole.ts.net;
 

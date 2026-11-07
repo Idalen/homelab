@@ -1,0 +1,72 @@
+---
+- name: Install and configure native Cloudflare Tunnel for NGINX
+  hosts: nginx
+  become: true
+  gather_facts: false
+
+  vars:
+    # Read the local .env without executing shell code; exported values take precedence.
+    cloudflared_dotenv: >-
+      {{ dict((lookup('ansible.builtin.file', playbook_dir ~ '/../../../.env', errors='ignore')
+         | default('', true))
+         | regex_findall('(?m)^(?:export[ \t]+)?(TUNNEL_TOKEN)[ \t]*=[ \t]*([^\r\n]*)$')) }}
+    cloudflared_token: >-
+      {{ lookup('ansible.builtin.env', 'TUNNEL_TOKEN')
+         | default(cloudflared_dotenv.get('TUNNEL_TOKEN', '') | trim | trim("'\""), true) }}
+
+  tasks:
+    - name: Check for an existing cloudflared service
+      ansible.builtin.stat:
+        path: /etc/systemd/system/cloudflared.service
+      register: cloudflared_service
+
+    - name: Require a token for the initial installation
+      ansible.builtin.assert:
+        that:
+          - cloudflared_token | length > 0 or cloudflared_service.stat.exists
+        fail_msg: Set TUNNEL_TOKEN in the repository .env or environment before running this playbook.
+      no_log: true
+
+    - name: Install repository dependencies
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - python3-debian
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Configure the official cloudflared APT repository
+      ansible.builtin.deb822_repository:
+        name: cloudflared
+        types: [deb]
+        uris: https://pkg.cloudflare.com/cloudflared
+        suites: [any]
+        components: [main]
+        signed_by: https://pkg.cloudflare.com/cloudflare-main.gpg
+        state: present
+        enabled: true
+      register: cloudflared_repository
+
+    - name: Install cloudflared
+      ansible.builtin.apt:
+        name: cloudflared
+        state: present
+        update_cache: "{{ cloudflared_repository.changed }}"
+
+    - name: Install the native cloudflared service
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/cloudflared
+          - service
+          - install
+          - "{{ cloudflared_token }}"
+        creates: /etc/systemd/system/cloudflared.service
+      no_log: true
+
+    - name: Enable and start cloudflared
+      ansible.builtin.systemd_service:
+        name: cloudflared
+        daemon_reload: true
+        state: started
+        enabled: true

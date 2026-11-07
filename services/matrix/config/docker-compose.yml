@@ -6,6 +6,10 @@ services:
     command: /sbin/conduwuit
     # Use the LXC's IPv4 directly, including for outbound federation.
     network_mode: host
+    # Bypass Pi-hole's query limits during large federated room joins.
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
     environment:
       CONTINUWUITY_SERVER_NAME: ${MATRIX_SERVER_NAME:?Set the permanent Matrix server domain}
       CONTINUWUITY_DATABASE_PATH: /var/lib/continuwuity

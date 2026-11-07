@@ -58,12 +58,13 @@
 
     - name: Deploy NGINX allowed origins
       ansible.builtin.copy:
-        src: ../snippets/allowed-origins.conf
-        dest: /etc/nginx/snippets/allowed-origins.conf
+        src: "{{ item }}"
+        dest: "/etc/nginx/snippets/{{ item | basename }}"
         owner: root
         group: root
         mode: "0644"
       notify: Reload NGINX
+      loop: "{{ query('fileglob', playbook_dir ~ '/../snippets/*.conf') }}"
 
     - name: Generate TLS private keys
       community.crypto.openssl_privatekey:
@@ -148,3 +149,5 @@
         name: nginx
         state: reloaded
 
+- name: Configure the NGINX Cloudflare Tunnel
+  ansible.builtin.import_playbook: cloudflared.yml
