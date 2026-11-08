@@ -41,5 +41,21 @@ services:
       - no-new-privileges:true
     stop_grace_period: 30s
 
+  telegram:
+    image: dock.mau.dev/mautrix/telegram:v26.10
+    container_name: mautrix-telegram
+    # The bridge playbook prepares its config before explicitly starting it.
+    profiles: [telegram]
+    restart: unless-stopped
+    network_mode: host
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+    volumes:
+      - ./telegram:/data
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+
 volumes:
   continuwuity-data:

@@ -183,3 +183,6 @@
 
 - name: Configure the WhatsApp bridge
   ansible.builtin.import_playbook: whatsapp.yml
+
+- name: Configure the Telegram bridge
+  ansible.builtin.import_playbook: telegram.yml

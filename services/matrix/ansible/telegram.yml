@@ -1,0 +1,246 @@
+---
+- name: Configure mautrix-telegram for Continuwuity
+  hosts: matrix
+  become: true
+  gather_facts: false
+  tags: [deploy, telegram]
+
+  vars:
+    matrix_dir: /opt/continuwuity
+    telegram_dir: "{{ matrix_dir }}/telegram"
+    telegram_dotenv: >-
+      {{ dict((lookup('ansible.builtin.file', playbook_dir ~ '/../../../.env', errors='ignore')
+         | default('', true))
+         | regex_findall('(?m)^(?:export[ \t]+)?(TELEGRAM_BRIDGE_ADMIN|TELEGRAM_API_ID|TELEGRAM_API_HASH)[ \t]*=[ \t]*([^\r\n]*)$')) }}
+    telegram_admin: >-
+      {{ lookup('ansible.builtin.env', 'TELEGRAM_BRIDGE_ADMIN')
+         | default(telegram_dotenv.get('TELEGRAM_BRIDGE_ADMIN', '') | trim | trim("'\""), true)
+         | default('@vieira:' ~ telegram_server_name, true) }}
+    telegram_api_id: >-
+      {{ lookup('ansible.builtin.env', 'TELEGRAM_API_ID')
+         | default(telegram_dotenv.get('TELEGRAM_API_ID', '') | trim | trim("'\""), true) }}
+    telegram_api_hash: >-
+      {{ lookup('ansible.builtin.env', 'TELEGRAM_API_HASH')
+         | default(telegram_dotenv.get('TELEGRAM_API_HASH', '') | trim | trim("'\""), true) }}
+
+  tasks:
+    - name: Read the deployed Matrix environment
+      ansible.builtin.slurp:
+        src: "{{ matrix_dir }}/.env"
+      register: telegram_matrix_environment
+      no_log: true
+
+    - name: Read the Matrix server identity
+      ansible.builtin.set_fact:
+        telegram_server_name: >-
+          {{ ((telegram_matrix_environment.content | b64decode)
+              | regex_findall('(?m)^MATRIX_SERVER_NAME=(.*)$') | first) }}
+        telegram_homeserver_ip: >-
+          {{ ((telegram_matrix_environment.content | b64decode)
+              | regex_findall('(?m)^MATRIX_IPV4=(.*)$') | first) }}
+
+    - name: Validate the bridge administrator
+      ansible.builtin.assert:
+        that:
+          - telegram_admin is match('^@[^:]+:' ~ (telegram_server_name | regex_escape) ~ '$')
+        fail_msg: TELEGRAM_BRIDGE_ADMIN must be a full Matrix user ID on this homeserver.
+
+    - name: Require Telegram application credentials
+      ansible.builtin.assert:
+        that:
+          - telegram_api_id is match('^[1-9][0-9]*$')
+          - telegram_api_hash is match('^[a-fA-F0-9]{32}$')
+        fail_msg: Set TELEGRAM_API_ID and TELEGRAM_API_HASH in .env using https://my.telegram.org/apps.
+      no_log: true
+
+    - name: Create the private bridge data directory
+      ansible.builtin.file:
+        path: "{{ telegram_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Deploy the Compose configuration with the Telegram service
+      ansible.builtin.copy:
+        src: ../config/docker-compose.yml
+        dest: "{{ matrix_dir }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Generate the bridge's version-matched default configuration
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - run
+          - --rm
+          - --no-deps
+          - --entrypoint
+          - /usr/bin/mautrix-telegram
+          - telegram
+          - -e
+          - -c
+          - /data/config.yaml
+        chdir: "{{ matrix_dir }}"
+        creates: "{{ telegram_dir }}/config.yaml"
+      no_log: true
+
+    - name: Read the bridge configuration, preserving existing tokens and keys
+      ansible.builtin.slurp:
+        src: "{{ telegram_dir }}/config.yaml"
+      register: telegram_existing_config
+      no_log: true
+
+    - name: Build the desired bridge configuration
+      ansible.builtin.set_fact:
+        telegram_desired_config: >-
+          {{ (telegram_existing_config.content | b64decode | from_yaml)
+             | combine(telegram_managed_config, recursive=true)
+             | combine({'bridge': ((telegram_existing_config.content | b64decode | from_yaml).bridge
+                 | combine({'permissions': {telegram_admin: 'admin'}})),
+                 'double_puppet': {'servers': {}, 'secrets': {}, 'allow_discovery': false}}, recursive=false)
+             }}
+      vars:
+        telegram_managed_config:
+          network:
+            api_id: "{{ telegram_api_id | int }}"
+            api_hash: "{{ telegram_api_hash }}"
+          homeserver:
+            address: "http://{{ telegram_homeserver_ip }}:8008"
+            domain: "{{ telegram_server_name }}"
+            software: standard
+          appservice:
+            address: http://127.0.0.1:29317
+            hostname: 127.0.0.1
+            port: 29317
+            id: telegram
+            bot:
+              username: telegrambot
+          database:
+            type: sqlite3-fk-wal
+            uri: file:/data/telegram.db?_txlock=immediate
+            max_open_conns: 1
+            max_idle_conns: 1
+          matrix:
+            federate_rooms: false
+          provisioning:
+            shared_secret: disable
+          encryption:
+            allow: true
+            default: true
+            appservice: false
+      no_log: true
+
+    - name: Update bridge configuration only when its settings change
+      ansible.builtin.copy:
+        content: "{{ telegram_desired_config | to_nice_yaml(indent=4, width=120) }}"
+        dest: "{{ telegram_dir }}/config.yaml"
+        mode: "0600"
+      when: (telegram_existing_config.content | b64decode | from_yaml) != telegram_desired_config
+      register: telegram_config_deployment
+      no_log: true
+
+    - name: Protect the bridge configuration
+      ansible.builtin.file:
+        path: "{{ telegram_dir }}/config.yaml"
+        mode: "0600"
+
+    - name: Generate the appservice registration once
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - run
+          - --rm
+          - --no-deps
+          - --entrypoint
+          - /usr/bin/mautrix-telegram
+          - telegram
+          - -g
+          - -c
+          - /data/config.yaml
+          - -r
+          - /data/registration.yaml
+        chdir: "{{ matrix_dir }}"
+        creates: "{{ telegram_dir }}/registration.yaml"
+      no_log: true
+
+    - name: Use escape-free literal dots in the generated registration
+      ansible.builtin.replace:
+        path: "{{ telegram_dir }}/registration.yaml"
+        regexp: '\\+\.'
+        replace: '[.]'
+      no_log: true
+
+    - name: Protect the appservice registration
+      ansible.builtin.file:
+        path: "{{ telegram_dir }}/registration.yaml"
+        mode: "0600"
+
+    - name: Read the generated appservice registration
+      ansible.builtin.slurp:
+        src: "{{ telegram_dir }}/registration.yaml"
+      register: telegram_registration
+      no_log: true
+
+    - name: Check the appservice token and bot namespace
+      ansible.builtin.uri:
+        url: "http://{{ telegram_homeserver_ip }}:8008/_matrix/client/versions?user_id={{ ('@telegrambot:' ~ telegram_server_name) | urlencode }}"
+        headers:
+          Authorization: "Bearer {{ (telegram_registration.content | b64decode | from_yaml).as_token }}"
+        status_code: [200, 400, 401]
+        return_content: true
+      register: telegram_registration_check
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Start the Telegram bridge
+      community.docker.docker_compose_v2:
+        project_src: "{{ matrix_dir }}"
+        services: [telegram]
+        state: present
+        pull: missing
+        recreate: "{{ 'always' if telegram_config_deployment.changed | default(false) else 'auto' }}"
+
+    - name: Explain a registered appservice with an invalid bot namespace
+      ansible.builtin.debug:
+        msg:
+          - "Continuwuity accepts the token but rejects the bot namespace."
+          - "In the private admin room, send !admin appservices unregister telegram, then register the exact YAML below again."
+          - "Preserve regex backslashes exactly; do not paste JSON-escaped output as YAML."
+          - "To display the raw YAML, run: cat {{ telegram_dir }}/registration.yaml on the Matrix host."
+      when:
+        - not ansible_check_mode
+        - telegram_registration_check.status == 400
+        - telegram_registration_check.json.errcode | default('') == 'M_EXCLUSIVE'
+
+    # Intentionally display the registration for the owner's internal deployment.
+    - name: Show the command to paste in the private Continuwuity admin room
+      ansible.builtin.debug:
+        msg: |
+          !admin appservices register
+          ```yaml
+          {{ telegram_registration.content | b64decode | trim }}
+          ```
+      when:
+        - not ansible_check_mode
+        - telegram_registration_check.status != 200
+
+    - name: Show the one-time registration and login steps
+      ansible.builtin.debug:
+        msg:
+          - "Once: paste the command above into your private Continuwuity admin room."
+          - "Confirm with !admin appservices list. The bridge retries startup until registration succeeds."
+          - "Then open a private chat with @telegrambot:{{ telegram_server_name }} and send login qr."
+          - "Scan the QR code from Telegram Settings > Devices > Link Desktop Device."
+      when:
+        - not ansible_check_mode
+        - telegram_registration_check.status != 200
+
+    - name: Report an already registered bridge
+      ansible.builtin.debug:
+        msg: "The Telegram appservice is already registered. Existing credentials and Telegram session are preserved."
+      when:
+        - not ansible_check_mode
+        - telegram_registration_check.status == 200
