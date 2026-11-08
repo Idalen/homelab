@@ -25,5 +25,21 @@ services:
       - no-new-privileges:true
     stop_grace_period: 60s
 
+  whatsapp:
+    image: dock.mau.dev/mautrix/whatsapp:v26.10
+    container_name: mautrix-whatsapp
+    # The bridge playbook prepares its config before explicitly starting it.
+    profiles: [whatsapp]
+    restart: unless-stopped
+    network_mode: host
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+    volumes:
+      - ./whatsapp:/data
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+
 volumes:
   continuwuity-data:

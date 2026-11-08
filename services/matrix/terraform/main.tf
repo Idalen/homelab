@@ -55,8 +55,8 @@ module "lxc" {
   dns_domain  = local.network.domain
   dns_servers = [local.network.ips.pihole, local.network.external_dns[0]]
 
-  disk_size = 4
+  disk_size = 5
 
-  memory_dedicated = 512
+  memory_dedicated = 1024
   enable_nesting   = true
 }

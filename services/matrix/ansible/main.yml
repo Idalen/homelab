@@ -180,3 +180,6 @@
                  else 'Matrix initial setup token (create the first account)' }}:
               {{ matrix_active_registration_token }}
           when: not ansible_check_mode
+
+- name: Configure the WhatsApp bridge
+  ansible.builtin.import_playbook: whatsapp.yml
