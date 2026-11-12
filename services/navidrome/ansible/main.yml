@@ -26,8 +26,25 @@
     navidrome_lyrics_version: v8.1.0
     navidrome_lyrics_checksum: sha256:29dd571ba0d4bb756e62c0d5c594a2d7e7c9ccec2950f3b027bd64c73c605715
     docker_arch: amd64
+    navidrome_dotenv: >-
+      {{ dict((lookup('ansible.builtin.file', playbook_dir ~ '/../../../.env', errors='ignore')
+         | default('', true))
+         | regex_findall('(?m)^(?:export[ \t]+)?(ND_LASTFM_APIKEY|ND_LASTFM_SECRET)[ \t]*=[ \t]*([^\r\n]*)$')) }}
+    navidrome_lastfm_api_key: >-
+      {{ lookup('ansible.builtin.env', 'ND_LASTFM_APIKEY')
+         | default(navidrome_dotenv.get('ND_LASTFM_APIKEY', '') | trim | trim("'\""), true) }}
+    navidrome_lastfm_secret: >-
+      {{ lookup('ansible.builtin.env', 'ND_LASTFM_SECRET')
+         | default(navidrome_dotenv.get('ND_LASTFM_SECRET', '') | trim | trim("'\""), true) }}
 
   tasks:
+    - name: Validate optional Last.fm credentials
+      ansible.builtin.assert:
+        that:
+          - (navidrome_lastfm_api_key == '' and navidrome_lastfm_secret == '') or (navidrome_lastfm_api_key is match('^[a-fA-F0-9]{32}$') and navidrome_lastfm_secret is match('^[a-fA-F0-9]{32}$'))
+        fail_msg: Set both ND_LASTFM_APIKEY and ND_LASTFM_SECRET in .env to your Last.fm application credentials.
+      no_log: true
+
     - name: Verify shared storage is mounted before writing data
       ansible.builtin.command:
         argv: [mountpoint, --quiet, "{{ navidrome_storage_dir }}"]
@@ -173,10 +190,13 @@
           PGID={{ navidrome_gid }}
           DATA_DIR={{ navidrome_data_dir }}
           MUSIC_DIR={{ navidrome_music_dir }}
+          ND_LASTFM_APIKEY={{ navidrome_lastfm_api_key }}
+          ND_LASTFM_SECRET={{ navidrome_lastfm_secret }}
         dest: "{{ navidrome_dir }}/.env"
         owner: root
         group: root
-        mode: "0644"
+        mode: "0600"
+      no_log: true
 
     - name: Ensure Navidrome is running
       community.docker.docker_compose_v2:
