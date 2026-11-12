@@ -21,6 +21,7 @@ help:
 	@printf "  prowlarr\n"
 	@printf "  matrix\n"
 	@printf "  navidrome\n"
+	@printf "  pds\n"
 
 pihole:
 	tofu -chdir=./services/pihole/terraform apply -auto-approve
@@ -83,3 +84,9 @@ navidrome:
 
 %:
 	@:
+
+.PHONY: pds
+pds:
+	tofu -chdir=./services/pds/terraform init
+	tofu -chdir=./services/pds/terraform apply
+	ansible-playbook ./services/pds/ansible/main.yml

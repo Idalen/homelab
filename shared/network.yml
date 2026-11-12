@@ -32,6 +32,7 @@ ips:
   prowlarr: "192.168.0.11"
   jellyfin: "192.168.0.9"
   navidrome: "192.168.0.13"
+  pds: "192.168.0.14"
   telegrambot: "192.168.0.201"
   # immich: variable (defined per deployment)
   # media: variable (defined per deployment)

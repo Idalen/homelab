@@ -1,0 +1,108 @@
+---
+- name: Install and configure personal AT Protocol PDS
+  hosts: pds
+  become: true
+  gather_facts: false
+
+  vars:
+    pds_dir: /opt/pds
+    pds_smtp_url: "{{ lookup('ansible.builtin.env', 'PDS_EMAIL_SMTP_URL') }}"
+    pds_email_from: "{{ lookup('ansible.builtin.env', 'PDS_EMAIL_FROM_ADDRESS') }}"
+
+  pre_tasks:
+    - name: Wait for the PDS host
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+      when: not ansible_check_mode
+
+    - name: Gather host facts
+      ansible.builtin.setup:
+
+    - name: Validate optional email configuration
+      ansible.builtin.assert:
+        that:
+          - (pds_smtp_url | length > 0) == (pds_email_from | length > 0)
+        fail_msg: Set both PDS_EMAIL_SMTP_URL and PDS_EMAIL_FROM_ADDRESS, or neither.
+      no_log: true
+
+  tasks:
+    - name: Install repository prerequisites and key generation dependencies
+      ansible.builtin.apt:
+        name: [ca-certificates, python3-debian, python3-requests, python3-cryptography]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Configure Docker repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: https://download.docker.com/linux/ubuntu
+        suites: ["{{ ansible_facts['distribution_release'] }}"]
+        components: [stable]
+        architectures: [amd64]
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin]
+        state: present
+        update_cache: true
+
+    - name: Start Docker
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create private project and data directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop: ["{{ pds_dir }}", /pds]
+
+    - name: Install key generator
+      ansible.builtin.copy:
+        src: ../scripts/create-secrets.py
+        dest: "{{ pds_dir }}/create-secrets.py"
+        mode: "0700"
+
+    - name: Generate persistent PDS keys only on first installation
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, "{{ pds_dir }}/create-secrets.py"]
+        creates: "{{ pds_dir }}/secrets.env"
+      no_log: true
+
+    - name: Deploy PDS settings
+      ansible.builtin.template:
+        src: pds.env.j2
+        dest: "{{ pds_dir }}/pds.env"
+        mode: "0600"
+      no_log: true
+      register: pds_settings
+
+    - name: Deploy Docker Compose configuration
+      ansible.builtin.copy:
+        src: ../config/docker-compose.yml
+        dest: "{{ pds_dir }}/docker-compose.yml"
+        mode: "0600"
+
+    - name: Start PDS
+      community.docker.docker_compose_v2:
+        project_src: "{{ pds_dir }}"
+        state: present
+        pull: missing
+        recreate: "{{ 'always' if pds_settings.changed else 'auto' }}"
+
+    - name: Check local PDS health
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3000/xrpc/_health
+        status_code: 200
+      register: pds_health
+      until: pds_health.status | default(0) == 200
+      retries: 30
+      delay: 2
+      when: not ansible_check_mode
