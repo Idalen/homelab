@@ -102,6 +102,7 @@
             shared_secret: disable
           encryption:
             allow: true
+            self_sign: true
             default: true
             appservice: false
       no_log: true
